@@ -18,9 +18,10 @@ builder.Configuration
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
-builder.Services.AddHealthChecks();
+builder.Services.AddHealthChecks()
+    .AddCheck<ModelHealthCheck>("model");
 
-// Infrastructure: CameraOptions, TimeProvider, frame sources, JPEG encoder.
+// Infrastructure: CameraOptions, TimeProvider, frame sources, YOLO detector, Skia renderer.
 builder.Services.AddQualityVisionInfrastructure(builder.Configuration);
 
 builder.Services.AddOptions<StreamOptions>()
@@ -45,6 +46,8 @@ builder.Services.AddSingleton<Channel<Frame>>(_ => Channel.CreateBounded<Frame>(
 
 builder.Services.AddSingleton<CameraStatus>();
 builder.Services.AddSingleton<ICameraStatus>(static sp => sp.GetRequiredService<CameraStatus>());
+builder.Services.AddSingleton<PipelineMetrics>();
+builder.Services.AddSingleton<IPipelineMetrics>(static sp => sp.GetRequiredService<PipelineMetrics>());
 builder.Services.AddSingleton<FrameBroadcaster>();
 builder.Services.AddSingleton<FrameUploadGate>();
 builder.Services.AddHostedService<CameraService>();
@@ -66,6 +69,7 @@ app.UseAntiforgery();
 app.MapHealthChecks("/health");
 app.MapStaticAssets();
 app.MapCameraEndpoints();
+app.MapPipelineEndpoints();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

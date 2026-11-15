@@ -8,10 +8,25 @@
   <ItemGroup>
     <PackageReference Include="OpenCvSharp4" />
     <PackageReference Include="OpenCvSharp4.official.runtime.linux-x64" />
+    <!-- Detection (M3). SkiaSharp itself comes transitively from YoloDotNet and is pinned in CPM. -->
+    <PackageReference Include="YoloDotNet" />
+    <PackageReference Include="YoloDotNet.ExecutionProvider.Cpu" />
+    <!-- Self-contained libSkiaSharp.so for Linux (no fontconfig/freetype system dependencies). -->
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="QualityVision.Tests" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\QualityVision.Core\QualityVision.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Bundled label font (DejaVu licence permits redistribution); flows to the Web/test output folders. -->
+    <None Include="Assets\Fonts\DejaVuSans-Bold.ttf" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Assets\Fonts\DejaVu-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

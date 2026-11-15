@@ -1,7 +1,10 @@
 ﻿@page "/"
+@using System.Globalization
+@using QualityVision.Core.Detection
 @using QualityVision.Web.Pipeline
 @implements IDisposable
 @inject ICameraStatus CameraStatus
+@inject IPipelineMetrics Metrics
 @inject TimeProvider Clock
 
 <PageTitle>QualityVision – Prüfstation</PageTitle>
@@ -16,7 +19,6 @@
         <div class="live-frame">
             <img src="/stream" alt="Livebild der Prüfstation" />
         </div>
-        <p class="placeholder">Erkennung folgt in M3</p>
     </section>
 
     <aside class="status" aria-label="Kamerastatus">
@@ -41,7 +43,7 @@
 
         <div class="tile">
             <span class="label">Eingangs-FPS</span>
-            <span class="value">@_fps.ToString("0.0", System.Globalization.CultureInfo.GetCultureInfo("de-DE"))</span>
+            <span class="value">@_fps.ToString("0.0", De)</span>
         </div>
 
         <div class="tile">
@@ -53,6 +55,40 @@
         {
             <p class="error-text">Fehler: @_lastError</p>
         }
+
+        <h2 class="panel-title">Verarbeitung</h2>
+
+        <div class="tile">
+            <span class="label">Verarbeitung (FPS)</span>
+            <span class="value">@_procFps.ToString("0.0", De)</span>
+        </div>
+
+        <div class="tile">
+            <span class="label">Inferenz (ms)</span>
+            <span class="value">@_inferenceMs.ToString("0.0", De)</span>
+        </div>
+
+        <div class="tile">
+            <span class="label">Erkannt</span>
+            <span class="value">@_detectionTotal</span>
+        </div>
+
+        <div class="tile">
+            <span class="label">Erkannte Objekte</span>
+            @if (_detections.Count == 0)
+            {
+                <span class="value-text muted">Keine Objekte</span>
+            }
+            else
+            {
+                <ul class="det-list">
+                    @foreach (var d in _detections)
+                    {
+                        <li><span>@GermanLabels.Get(d.ClassName)</span><span class="det-conf">@d.Confidence.ToString("P0", De)</span></li>
+                    }
+                </ul>
+            }
+        </div>
     </aside>
 </main>
 
@@ -63,6 +99,11 @@
     private double _fps;
     private string _lastFrameText = "–";
     private string? _lastError;
+    private double _procFps;
+    private double _inferenceMs;
+    private IReadOnlyList<Detection> _detections = [];
+    private int _detectionTotal;
+    private static readonly CultureInfo De = CultureInfo.GetCultureInfo("de-DE");
 
     protected override void OnInitialized()
     {
@@ -97,6 +138,11 @@
         _connected = CameraStatus.IsConnected;
         _fps = CameraStatus.FpsIn;
         _lastError = CameraStatus.LastError;
+        _procFps = Metrics.ProcessedFps;
+        _inferenceMs = Metrics.InferenceMs;
+        var all = Metrics.LastDetections;
+        _detectionTotal = all.Count;
+        _detections = all.OrderByDescending(d => d.Confidence).Take(8).ToList();
 
         var last = CameraStatus.LastFrameAt;
         if (last is null)

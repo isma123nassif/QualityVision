@@ -107,10 +107,39 @@ h1:focus {
   object-fit: contain;
 }
 
-.placeholder {
-  margin: 0.75rem 0 0;
-  font-size: 1.25rem;
+.panel-title {
+  margin: 1.25rem 0 0.75rem;
+  font-size: 1.5rem;
+  color: var(--text);
+}
+
+.muted {
   color: var(--muted);
+}
+
+.det-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.det-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.25rem 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+
+.det-list li:last-child {
+  border-bottom: 0;
+}
+
+.det-conf {
+  color: #38bdf8;
+  font-variant-numeric: tabular-nums;
 }
 
 .status h2 {

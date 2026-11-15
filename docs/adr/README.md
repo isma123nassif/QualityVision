@@ -8,3 +8,4 @@ before the affected code exists are recorded in the ADR's own "Amendments" secti
 |---|---|---|---|
 | [ADR-001](ADR-001-architecture.md) | Layered architecture and inspection pipeline | Accepted (amended) | 2026-11-15 |
 | [ADR-002](ADR-002-rules-engine-boundary.md) | Rules engine boundary and debounce unit | Accepted | 2026-11-15 |
+| [ADR-003](ADR-003-object-detection-model.md) | Object detection model and inference runtime | Accepted | 2026-11-15 |

@@ -2,20 +2,25 @@ using System.Threading.Channels;
 
 using Microsoft.Extensions.Options;
 
+using QualityVision.Core.Detection;
 using QualityVision.Core.Frames;
+using QualityVision.Infrastructure.Detection;
 using QualityVision.Infrastructure.Imaging;
 
 namespace QualityVision.Web.Pipeline;
 
 /// <summary>
-/// Consumer side of the frame channel. M2 version: throttles to <c>Stream:MaxFps</c>, encodes the frame once
-/// (with the Prüfzone drawn) and publishes the JPEG to <see cref="FrameBroadcaster"/> for <c>GET /stream</c>.
-/// M3 inserts YOLO detection here (and M4 the RulesEngine + ZoneEntryTracker) before encoding.
+/// Consumer side of the frame channel. Per frame: YOLO detection (timed), metrics update, one annotated JPEG
+/// (Prüfzone + boxes drawn) published to <see cref="FrameBroadcaster"/> for <c>GET /stream</c>.
+/// M4 inserts the RulesEngine + ZoneEntryTracker after detection. <c>Stream:MaxFps</c> stays an upper bound.
 /// Each frame is disposed by this service after processing.
 /// </summary>
 public sealed class DetectionService(
     Channel<Frame> frames,
-    JpegFrameEncoder encoder,
+    IObjectDetector detector,
+    YoloObjectDetector warmUpTarget,
+    SkiaFrameRenderer renderer,
+    PipelineMetrics metrics,
     FrameBroadcaster broadcaster,
     IOptionsMonitor<StreamOptions> streamOptions,
     IOptionsMonitor<InspectionOptions> inspectionOptions,
@@ -23,11 +28,31 @@ public sealed class DetectionService(
     ILogger<DetectionService> logger) : BackgroundService
 {
     private static readonly TimeSpan ErrorBackoff = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan ErrorLogInterval = TimeSpan.FromSeconds(5);
+
+    private long _lastErrorLog;
+    private bool _errorLogged;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Return control to the host immediately: warm-up and inference are CPU-bound and must not block startup.
+        await Task.Yield();
+
         try
         {
+            try
+            {
+                long started = timeProvider.GetTimestamp();
+                warmUpTarget.WarmUp();
+                metrics.MarkModelReady();
+                logger.LogInformation("Model warm-up took {Ms} ms", timeProvider.GetElapsedTime(started).TotalMilliseconds);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Warm-up is an optimisation: continue into the frame loop; health stays Degraded until a success.
+                logger.LogError(ex, "Model warm-up failed; continuing without warm-up");
+            }
+
             await ProcessFramesAsync(stoppingToken);
         }
         finally
@@ -54,19 +79,34 @@ public sealed class DetectionService(
                     StreamOptions stream = streamOptions.CurrentValue;
                     InspectionOptions inspection = inspectionOptions.CurrentValue;
 
-                    byte[] jpeg = encoder.Encode(frame, inspection.Zone, stream.JpegQuality, stream.MaxWidth);
+                    metrics.MarkFrameSeen();
+                    IReadOnlyList<Detection> detections;
+                    try
+                    {
+                        long inferenceStart = timeProvider.GetTimestamp();
+                        detections = detector.Detect(frame);
+                        double inferenceMs = timeProvider.GetElapsedTime(inferenceStart).TotalMilliseconds;
+                        metrics.Record(detections, inferenceMs);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        // Inference failure must not freeze the live stream: show the raw frame without boxes.
+                        LogFrameError(ex, frame.Sequence);
+                        detections = [];
+                    }
+
+                    byte[] jpeg = renderer.RenderJpeg(frame, detections, inspection.Zone, stream.JpegQuality, stream.MaxWidth);
                     broadcaster.Publish(jpeg);
 
-                    // Throttle: wait out the rest of the frame interval. Meanwhile the channel keeps only the
+                    // Upper bound: wait out the rest of the frame interval. Meanwhile the channel keeps only the
                     // newest frames (DropOldest), so the next frame we read is still fresh.
                     TimeSpan minInterval = TimeSpan.FromSeconds(1.0 / stream.MaxFps);
                     delay = minInterval - timeProvider.GetElapsedTime(started);
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     // One bad frame (or an invalid options reload) must not stop the pipeline.
-                    long sequence = frame.Sequence;
-                    logger.LogError(ex, "Processing frame {Sequence} failed", sequence);
+                    LogFrameError(ex, frame.Sequence);
                     delay = ErrorBackoff;
                 }
             }
@@ -76,5 +116,18 @@ public sealed class DetectionService(
                 await Task.Delay(delay, timeProvider, stoppingToken);
             }
         }
+    }
+
+    /// <summary>Logs at most once per 5 s so a persistently failing frame cannot flood the log.</summary>
+    private void LogFrameError(Exception ex, long sequence)
+    {
+        if (_errorLogged && timeProvider.GetElapsedTime(_lastErrorLog) < ErrorLogInterval)
+        {
+            return;
+        }
+
+        _errorLogged = true;
+        _lastErrorLog = timeProvider.GetTimestamp();
+        logger.LogError(ex, "Processing frame {Sequence} failed", sequence);
     }
 }

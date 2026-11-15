@@ -1,13 +1,16 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
+using QualityVision.Core.Detection;
 using QualityVision.Infrastructure.Camera;
+using QualityVision.Infrastructure.Detection;
 using QualityVision.Infrastructure.Imaging;
 
 namespace QualityVision.Infrastructure;
 
-/// <summary>Registers the Infrastructure adapters (camera sources, JPEG encoder) and their options.</summary>
+/// <summary>Registers the Infrastructure adapters (camera sources, YOLO detector, frame renderer) and their options.</summary>
 public static class DependencyInjection
 {
     public static IServiceCollection AddQualityVisionInfrastructure(this IServiceCollection services,
@@ -34,10 +37,20 @@ public static class DependencyInjection
 
         services.TryAddSingleton(TimeProvider.System);
 
+        services.AddOptions<DetectionOptions>()
+            .Bind(configuration.GetSection(DetectionOptions.SectionName))
+            .ValidateOnStart();
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IValidateOptions<DetectionOptions>, DetectionOptionsValidator>());
+
         // Singleton: shared by the HTTP frame endpoint (producer) and the camera pipeline (consumer).
         services.AddSingleton<PhoneFrameSource>();
         services.AddSingleton<FrameSourceFactory>();
-        services.AddSingleton<JpegFrameEncoder>();
+
+        // One model instance for the whole app: exposed as itself (WarmUp) and as the Core port, same instance.
+        services.AddSingleton<YoloObjectDetector>();
+        services.AddSingleton<IObjectDetector>(static sp => sp.GetRequiredService<YoloObjectDetector>());
+        services.AddSingleton<SkiaFrameRenderer>();
 
         return services;
     }

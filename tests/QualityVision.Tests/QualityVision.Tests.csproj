@@ -22,4 +22,9 @@
     <ProjectReference Include="..\..\src\QualityVision.Web\QualityVision.Web.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\..\models\yolo11n.onnx" Link="models\yolo11n.onnx" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
