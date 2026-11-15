@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/QualityVision.Core/QualityVision.Core.csproj" />
+    <Project Path="src/QualityVision.Infrastructure/QualityVision.Infrastructure.csproj" />
+    <Project Path="src/QualityVision.Web/QualityVision.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/QualityVision.Tests/QualityVision.Tests.csproj" />
+  </Folder>
+</Solution>

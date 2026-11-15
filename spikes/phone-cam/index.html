@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Handy-Kamera</title>
+<style>
+  body{margin:0;background:#111;color:#eee;font-family:-apple-system,sans-serif;padding:12px}
+  video{width:100%;background:#000;border-radius:8px}
+  button{font-size:22px;padding:18px;width:100%;border:0;border-radius:10px;background:#1b8f3a;color:#fff;margin:10px 0}
+  button.stop{background:#b33}
+  label{display:block;margin:10px 0 4px}
+  select,input{width:100%;font-size:18px}
+  #err{color:#ff6b6b;font-weight:bold;margin:8px 0}
+  #stats{font-family:monospace;margin-top:10px}
+</style>
+</head>
+<body>
+<button id="btn">Kamera starten</button>
+<div id="err"></div>
+<video id="video" playsinline muted autoplay></video>
+<label>Auflösung
+  <select id="res"><option value="640x360">640x360</option><option value="1280x720" selected>1280x720</option></select>
+</label>
+<label>JPEG-Qualität: <span id="qv">0.7</span>
+  <input id="q" type="range" min="0.5" max="0.9" step="0.05" value="0.7">
+</label>
+<label>Max. FPS
+  <select id="fps"><option>10</option><option>15</option><option selected>20</option><option>30</option></select>
+</label>
+<div id="stats">Gesendet: - FPS | Upload: - ms | - KB/Frame</div>
+<script>
+const $ = id => document.getElementById(id);
+const video = $('video'), btn = $('btn'), err = $('err');
+const canvas = document.createElement('canvas');
+const ctx = canvas.getContext('2d');
+let stream = null, running = false, wakeLock = null;
+
+$('q').oninput = () => $('qv').textContent = $('q').value;
+
+async function acquireWakeLock() {
+  try {
+    if ('wakeLock' in navigator && running) wakeLock = await navigator.wakeLock.request('screen');
+  } catch (e) { /* ignore */ }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && running) acquireWakeLock();
+});
+
+async function start() {
+  err.textContent = '';
+  if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    err.textContent = 'Kein sicherer Kontext (HTTPS nötig) – Kamera nicht verfügbar.';
+    return;
+  }
+  const [w, h] = $('res').value.split('x').map(Number);
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {facingMode: {ideal: 'environment'}, width: {ideal: w}, height: {ideal: h}, frameRate: {ideal: 30}},
+      audio: false
+    });
+  } catch (e) {
+    err.textContent = (e.name === 'NotAllowedError' || e.name === 'SecurityError')
+      ? 'Kamerazugriff verweigert. Bitte in den Safari-Einstellungen erlauben.'
+      : 'Kamera-Fehler: ' + e.name + ' – ' + e.message;
+    return;
+  }
+  video.srcObject = stream;
+  try { await video.play(); } catch (e) {}
+  running = true;
+  btn.textContent = 'Kamera stoppen';
+  btn.className = 'stop';
+  acquireWakeLock();
+  loop();
+}
+
+function stop() {
+  running = false;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null;
+  if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+  btn.textContent = 'Kamera starten';
+  btn.className = '';
+}
+btn.onclick = () => running ? stop() : start();
+
+function toBlob(q) {
+  return new Promise(res => canvas.toBlob(res, 'image/jpeg', q));
+}
+
+async function loop() {
+  let lastSend = 0, sentWin = 0, upMsWin = 0, bytesWin = 0, winStart = performance.now();
+  while (running) {
+    const minGap = 1000 / Number($('fps').value);
+    const now = performance.now();
+    if (now - lastSend < minGap || video.readyState < 2 || !video.videoWidth) {
+      await new Promise(r => requestAnimationFrame(r));
+      continue;
+    }
+    lastSend = now;
+    // Output size follows the select; keep the video aspect ratio via the select's width.
+    const [tw] = $('res').value.split('x').map(Number);
+    const th = Math.round(tw * video.videoHeight / video.videoWidth);
+    if (canvas.width !== tw || canvas.height !== th) { canvas.width = tw; canvas.height = th; }
+    ctx.drawImage(video, 0, 0, tw, th);
+    const blob = await toBlob(Number($('q').value));
+    if (!blob) continue;
+    const t0 = performance.now();
+    try {
+      // Only one request in flight: natural backpressure.
+      await fetch('/frame', {method: 'POST', body: blob, headers: {'Content-Type': 'image/jpeg'}});
+    } catch (e) {
+      err.textContent = 'Sendefehler: Server nicht erreichbar.';
+      await new Promise(r => setTimeout(r, 1000));
+      continue;
+    }
+    if (err.textContent.startsWith('Sendefehler')) err.textContent = '';
+    const t1 = performance.now();
+    sentWin++; upMsWin += t1 - t0; bytesWin += blob.size;
+    if (t1 - winStart >= 1000) {
+      $('stats').textContent = 'Gesendet: ' + (sentWin * 1000 / (t1 - winStart)).toFixed(1) +
+        ' FPS | Upload: ' + (upMsWin / sentWin).toFixed(0) + ' ms | ' +
+        (bytesWin / sentWin / 1024).toFixed(0) + ' KB/Frame';
+      sentWin = 0; upMsWin = 0; bytesWin = 0; winStart = t1;
+    }
+  }
+}
+if (!window.isSecureContext || !navigator.mediaDevices) {
+  err.textContent = 'Kein sicherer Kontext (HTTPS nötig) – Kamera nicht verfügbar.';
+}
+</script>
+</body>
+</html>
