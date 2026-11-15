@@ -1,6 +1,16 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <!-- Logging, options, configuration and hosting abstractions without extra package versions. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="OpenCvSharp4" />
+    <PackageReference Include="OpenCvSharp4.official.runtime.linux-x64" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\QualityVision.Core\QualityVision.Core.csproj" />
   </ItemGroup>
 

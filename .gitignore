@@ -491,3 +491,4 @@ tools/**/.venv/
 spikes/**/certs/
 __pycache__/
 samples/*.local.*
+appsettings.Local.json

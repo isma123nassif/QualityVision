@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Handy-Kamera – QualityVision</title>
+<style>
+  body{margin:0;background:#0f172a;color:#e2e8f0;font-family:-apple-system,system-ui,sans-serif;padding:12px}
+  h1{font-size:20px;margin:0 0 8px;color:#22c55e}
+  #wrap{position:relative;width:100%;background:#000;border-radius:8px;overflow:hidden;aspect-ratio:16/9}
+  video{position:absolute;left:50%;top:50%;background:#000;transform-origin:center center}
+  .row{display:flex;gap:10px;align-items:stretch}
+  .row button{margin:10px 0}
+  #rot{flex:2}
+  #auto{flex:1;background:#334155}
+  #rotinfo{font-weight:bold;margin:0 0 6px}
+  button{font-size:22px;padding:18px;width:100%;border:0;border-radius:10px;background:#1b8f3a;color:#fff;margin:10px 0}
+  button.stop{background:#b33}
+  label{display:block;margin:10px 0 4px}
+  select,input{width:100%;font-size:18px}
+  #err{color:#ff6b6b;font-weight:bold;margin:8px 0}
+  #hint{color:#fbbf24;margin:8px 0;display:none}
+  #stats{font-family:monospace;margin-top:10px}
+</style>
+</head>
+<body>
+<h1>QualityVision – Handy-Kamera</h1>
+<button id="btn">Kamera starten</button>
+<div id="err"></div>
+<div id="hint">Tipp: Handy quer halten oder mit „Drehen ⟳“ ausrichten</div>
+<div id="wrap"><video id="video" playsinline muted autoplay></video></div>
+<div class="row">
+  <button id="rot" type="button">Drehen ⟳</button>
+  <button id="auto" type="button">Auto</button>
+</div>
+<div id="rotinfo">Drehung: Auto (0°)</div>
+<label>Auflösung (längste Seite)
+  <select id="res"><option value="640x360">640x360</option><option value="1280x720" selected>1280x720</option></select>
+</label>
+<label>JPEG-Qualität: <span id="qv">0.7</span>
+  <input id="q" type="range" min="0.5" max="0.9" step="0.05" value="0.7">
+</label>
+<label>Max. FPS
+  <select id="fps"><option>10</option><option>15</option><option selected>20</option><option>30</option></select>
+</label>
+<div id="stats">Gesendet: - FPS | Upload: - ms | - KB/Frame</div>
+<script>
+const $ = id => document.getElementById(id);
+const video = $('video'), btn = $('btn'), err = $('err'), hint = $('hint');
+const canvas = document.createElement('canvas');
+const ctx = canvas.getContext('2d');
+let stream = null, running = false, wakeLock = null;
+
+$('q').oninput = () => $('qv').textContent = $('q').value;
+
+// Rotation: 'auto' or 0/90/180/270 (manual choice overrides auto, persisted in localStorage).
+const ROT_KEY = 'qv.rotation';
+function loadRotation() {
+  try {
+    const v = localStorage.getItem(ROT_KEY);
+    if (v !== null && [0, 90, 180, 270].includes(Number(v))) return Number(v);
+  } catch (e) { /* ignore */ }
+  return 'auto';
+}
+let rotSetting = loadRotation();
+
+function saveRotation() {
+  try {
+    if (rotSetting === 'auto') localStorage.removeItem(ROT_KEY);
+    else localStorage.setItem(ROT_KEY, String(rotSetting));
+  } catch (e) { /* ignore */ }
+}
+
+function screenIsLandscape() {
+  if (screen.orientation && typeof screen.orientation.type === 'string') return screen.orientation.type.startsWith('landscape');
+  if (typeof window.orientation === 'number') return Math.abs(window.orientation) === 90;
+  return null;
+}
+
+// Auto: landscape screen -> 0; portrait screen with portrait video -> 0. No further guessing.
+function autoRotation() {
+  if (screenIsLandscape() === true) return 0;
+  return 0;
+}
+
+function effectiveRotation() {
+  return rotSetting === 'auto' ? autoRotation() : rotSetting;
+}
+
+// Lay out the preview so it shows the rotated frame as it is sent.
+function applyPreview() {
+  const rot = effectiveRotation();
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const wrap = $('wrap');
+  if (!vw || !vh) { video.style.transform = 'translate(-50%,-50%)'; return; }
+  const swap = rot === 90 || rot === 270;
+  const ow = swap ? vh : vw, oh = swap ? vw : vh;      // output (rotated) size
+  wrap.style.aspectRatio = ow + ' / ' + oh;
+  const boxW = wrap.clientWidth, boxH = boxW * oh / ow;
+  video.style.width = (swap ? boxH : boxW) + 'px';      // unrotated element size
+  video.style.height = (swap ? boxW : boxH) + 'px';
+  video.style.transform = 'translate(-50%,-50%) rotate(' + rot + 'deg)';
+}
+
+function updateRotationUi() {
+  const rot = effectiveRotation();
+  $('rotinfo').textContent = 'Drehung: ' + (rotSetting === 'auto' ? 'Auto (' + rot + '°)' : rot + '°');
+  applyPreview();
+  updateHint();
+}
+
+function updateHint() {
+  const swap = effectiveRotation() % 180 !== 0;
+  const portrait = swap ? video.videoWidth > video.videoHeight : video.videoHeight > video.videoWidth;
+  hint.style.display = (running && portrait) ? 'block' : 'none';
+}
+
+$('rot').onclick = () => { rotSetting = (effectiveRotation() + 90) % 360; saveRotation(); updateRotationUi(); };
+$('auto').onclick = () => { rotSetting = 'auto'; saveRotation(); updateRotationUi(); };
+video.addEventListener('resize', updateRotationUi);
+video.addEventListener('loadedmetadata', updateRotationUi);
+window.addEventListener('resize', applyPreview);
+window.addEventListener('orientationchange', updateRotationUi);
+if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', updateRotationUi);
+
+async function acquireWakeLock() {
+  try {
+    if ('wakeLock' in navigator && running) wakeLock = await navigator.wakeLock.request('screen');
+  } catch (e) { /* ignore */ }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && running) acquireWakeLock();
+});
+
+async function start() {
+  err.textContent = '';
+  if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    err.textContent = 'Kein sicherer Kontext (HTTPS nötig) – Kamera nicht verfügbar.';
+    return;
+  }
+  const [w, h] = $('res').value.split('x').map(Number);
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {facingMode: {ideal: 'environment'}, width: {ideal: w}, height: {ideal: h}, frameRate: {ideal: 30}},
+      audio: false
+    });
+  } catch (e) {
+    err.textContent = (e.name === 'NotAllowedError' || e.name === 'SecurityError')
+      ? 'Kamerazugriff verweigert. Bitte in den Safari-Einstellungen erlauben.'
+      : 'Kamera-Fehler: ' + e.name + ' – ' + e.message;
+    return;
+  }
+  video.srcObject = stream;
+  try { await video.play(); } catch (e) {}
+  running = true;
+  btn.textContent = 'Kamera stoppen';
+  btn.className = 'stop';
+  updateRotationUi();
+  acquireWakeLock();
+  loop();
+}
+
+function stop() {
+  running = false;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null;
+  if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+  btn.textContent = 'Kamera starten';
+  btn.className = '';
+  hint.style.display = 'none';
+}
+btn.onclick = () => running ? stop() : start();
+
+function toBlob(q) {
+  return new Promise(res => canvas.toBlob(res, 'image/jpeg', q));
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function loop() {
+  let lastSend = 0, sentWin = 0, upMsWin = 0, bytesWin = 0, winStart = performance.now();
+  while (running) {
+    const minGap = 1000 / Number($('fps').value);
+    const now = performance.now();
+    if (now - lastSend < minGap || video.readyState < 2 || !video.videoWidth) {
+      await new Promise(r => requestAnimationFrame(r));
+      continue;
+    }
+    lastSend = now;
+    // Scale so that the LONGEST side is <= the selected size (portrait phones stay small).
+    const [maxSide] = $('res').value.split('x').map(Number);
+    const vw = video.videoWidth, vh = video.videoHeight;
+    const scale = Math.min(1, maxSide / Math.max(vw, vh));
+    const tw = Math.max(1, Math.round(vw * scale)), th = Math.max(1, Math.round(vh * scale));
+    const rot = effectiveRotation();
+    const swap = rot % 180 !== 0;
+    const cw = swap ? th : tw, ch = swap ? tw : th;   // longest-side limit still holds after rotation
+    if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.translate(cw / 2, ch / 2);
+    ctx.rotate(rot * Math.PI / 180);
+    ctx.drawImage(video, -tw / 2, -th / 2, tw, th);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const blob = await toBlob(Number($('q').value));
+    if (!blob) continue;
+    const t0 = performance.now();
+    let resp;
+    try {
+      // Only one request in flight: natural backpressure.
+      resp = await fetch('/api/camera/frame', {method: 'POST', body: blob, headers: {'Content-Type': 'image/jpeg'}});
+    } catch (e) {
+      err.textContent = 'Sendefehler: Server nicht erreichbar.';
+      await sleep(1000);
+      continue;
+    }
+    if (resp.status === 409) {
+      err.textContent = 'Kamera-Quelle ist nicht auf Handy eingestellt';
+      await sleep(1000);
+      continue;
+    }
+    if (!resp.ok) {
+      err.textContent = 'Sendefehler: Server antwortet mit Status ' + resp.status + '.';
+      await sleep(1000);
+      continue;
+    }
+    if (err.textContent.startsWith('Sendefehler') || err.textContent.startsWith('Kamera-Quelle')) err.textContent = '';
+    const t1 = performance.now();
+    sentWin++; upMsWin += t1 - t0; bytesWin += blob.size;
+    if (t1 - winStart >= 1000) {
+      $('stats').textContent = 'Gesendet: ' + (sentWin * 1000 / (t1 - winStart)).toFixed(1) +
+        ' FPS | Upload: ' + (upMsWin / sentWin).toFixed(0) + ' ms | ' +
+        (bytesWin / sentWin / 1024).toFixed(0) + ' KB/Frame';
+      sentWin = 0; upMsWin = 0; bytesWin = 0; winStart = t1;
+    }
+  }
+}
+updateRotationUi();
+if (!window.isSecureContext || !navigator.mediaDevices) {
+  err.textContent = 'Kein sicherer Kontext (HTTPS nötig) – Kamera nicht verfügbar.';
+}
+</script>
+</body>
+</html>

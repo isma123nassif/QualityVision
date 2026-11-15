@@ -19,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\QualityVision.Core\QualityVision.Core.csproj" />
     <ProjectReference Include="..\..\src\QualityVision.Infrastructure\QualityVision.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\QualityVision.Web\QualityVision.Web.csproj" />
   </ItemGroup>
 
 </Project>
