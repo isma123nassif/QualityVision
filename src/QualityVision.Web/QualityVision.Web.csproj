@@ -13,4 +13,12 @@
     <None Include="..\..\models\yolo11n.onnx" Link="models\yolo11n.onnx" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Hot-reloadable rules. At runtime the app reads the copy in the content root (the project folder under
+         `dotnet run`), so editing src/QualityVision.Web/rules.json reloads live; the output copy is for publish.
+         When published, the content root is the current working directory: start the app from the publish folder
+         (or pass the contentRoot command-line argument), otherwise the required rules.json is not found. -->
+    <Content Update="rules.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

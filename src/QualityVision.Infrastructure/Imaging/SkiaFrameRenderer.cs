@@ -3,11 +3,10 @@ using System.Globalization;
 using QualityVision.Core.Detection;
 using QualityVision.Core.Frames;
 using QualityVision.Core.Geometry;
+using QualityVision.Core.Inspection;
+using QualityVision.Core.Rules;
 
 using SkiaSharp;
-
-// Alias: inside QualityVision.Infrastructure.*, a bare "Detection" binds to the Infrastructure.Detection namespace.
-using CoreDetection = QualityVision.Core.Detection.Detection;
 
 namespace QualityVision.Infrastructure.Imaging;
 
@@ -19,13 +18,15 @@ namespace QualityVision.Infrastructure.Imaging;
 /// </summary>
 public sealed class SkiaFrameRenderer : IDisposable
 {
-    /// <summary>Default box colour (cyan <c>#38bdf8</c>); M4 passes a per-verdict colour instead.</summary>
-    public static readonly SKColor DefaultBoxColor = SKColor.Parse("#38bdf8");
-
     private const string ZoneLabel = "Prüfzone";
     private const float ReferenceWidth = 1280f;
+    private const byte OutsideZoneAlpha = 153; // ~60 %
 
-    private static readonly SKColor ZoneColor = SKColor.Parse("#22c55e");
+    private static readonly SKColor EmptyZoneColor = SKColor.Parse("#e5e7eb");
+    private static readonly SKColor OkColor = SKColor.Parse("#22c55e");
+    private static readonly SKColor NokColor = SKColor.Parse("#ef4444");
+    private static readonly SKColor DangerColor = SKColor.Parse("#f97316");
+    private static readonly SKColor UnknownColor = SKColor.Parse("#9ca3af");
     private static readonly SKColor LabelBackground = new(17, 24, 39, 230); // #111827, ~90 % opaque
     private static readonly CultureInfo German = CultureInfo.GetCultureInfo("de-DE");
     private static readonly SKSamplingOptions DownscaleSampling = new(SKFilterMode.Linear, SKMipmapMode.None);
@@ -55,15 +56,15 @@ public sealed class SkiaFrameRenderer : IDisposable
     /// <summary>
     /// Returns a JPEG of <paramref name="frame"/> scaled to at most <paramref name="maxWidth"/> pixels wide
     /// (0 or less = no limit, aspect kept), with <paramref name="zone"/> (if valid) and <paramref name="detections"/> drawn.
+    /// Boxes are coloured by verdict; <see cref="Verdict.Ignore"/> is not drawn; objects outside the zone are dimmed.
     /// </summary>
     /// <param name="frame">Source frame; never modified.</param>
-    /// <param name="detections">Detections to draw (normalised boxes).</param>
+    /// <param name="detections">Classified detections to draw (normalised boxes).</param>
     /// <param name="zone">Inspection zone to draw, or null for none.</param>
     /// <param name="quality">JPEG quality, clamped to 1–100.</param>
     /// <param name="maxWidth">Maximum output width in pixels; 0 or less = no limit.</param>
-    /// <param name="boxColor">Colour per detection (e.g. by verdict); <see cref="DefaultBoxColor"/> when null.</param>
-    public byte[] RenderJpeg(Frame frame, IReadOnlyList<CoreDetection> detections, NormalizedRect? zone, int quality,
-        int maxWidth, Func<CoreDetection, SKColor>? boxColor = null)
+    public byte[] RenderJpeg(Frame frame, IReadOnlyList<ClassifiedDetection> detections, NormalizedRect? zone, int quality,
+        int maxWidth)
     {
         ArgumentNullException.ThrowIfNull(frame);
         ArgumentNullException.ThrowIfNull(detections);
@@ -91,29 +92,53 @@ public sealed class SkiaFrameRenderer : IDisposable
         using var strokePaint = new SKPaint { Style = SKPaintStyle.Stroke, StrokeWidth = stroke, IsAntialias = true };
         using var fillPaint = new SKPaint { Style = SKPaintStyle.Fill, IsAntialias = true };
 
-        if (zone is { IsValid: true } validZone)
-        {
-            SKRect rect = ToPixels(validZone, width, height);
-            strokePaint.Color = ZoneColor;
-            canvas.DrawRect(rect, strokePaint);
-            DrawLabel(canvas, ZoneLabel, rect, ZoneColor, zoneFont, fillPaint, stroke, width, height);
-        }
+        NormalizedRect? validZone = zone is { IsValid: true } ? zone : null;
 
-        foreach (CoreDetection detection in detections)
+        foreach (ClassifiedDetection item in detections)
         {
-            SKRect rect = ToPixels(detection.Box, width, height);
-            if (rect.Width <= 0 || rect.Height <= 0)
+            SKRect rect = ToPixels(item.Detection.Box, width, height);
+            if (item.Verdict == Verdict.Ignore || rect.Width <= 0 || rect.Height <= 0)
             {
                 continue;
             }
 
-            SKColor color = boxColor?.Invoke(detection) ?? DefaultBoxColor;
+            bool inZone = validZone is { } z && InspectionZone.IsInside(item.Detection, z);
+            bool full = validZone is null || inZone;
+            byte alpha = full ? (byte)255 : OutsideZoneAlpha;
+            SKColor color = VerdictColor(item.Verdict).WithAlpha(alpha);
             strokePaint.Color = color;
+            strokePaint.StrokeWidth = full ? stroke : MathF.Max(2f, MathF.Round(stroke * 0.6f));
             canvas.DrawRect(rect, strokePaint);
 
-            // "P0" with de-DE → "87 %" (non-breaking space), e.g. "Flasche 87 %".
-            string label = string.Create(German, $"{GermanLabels.Get(detection.ClassName)} {detection.Confidence:P0}");
-            DrawLabel(canvas, label, rect, color, font, fillPaint, stroke, width, height);
+            // "P0" with de-DE → "82 %" (non-breaking space), e.g. "Tasse 82 % · n.i.O.".
+            string label = string.Create(German,
+                $"{GermanLabels.Get(item.Detection.ClassName)} {item.Detection.Confidence:P0} · {VerdictLabels.Get(item.Verdict)}");
+            DrawLabel(canvas, label, rect, color, font, fillPaint, stroke, width, height, alpha);
+        }
+
+        if (validZone is { } drawnZone)
+        {
+            // Zone colour = most severe non-ignored verdict inside; drawn last so it stays on top.
+            Verdict? worst = null;
+            foreach (ClassifiedDetection item in detections)
+            {
+                if (item.Verdict != Verdict.Ignore && InspectionZone.IsInside(item.Detection, drawnZone)
+                    && (worst is null || VerdictSeverity.Rank(item.Verdict) > VerdictSeverity.Rank(worst.Value)))
+                {
+                    worst = item.Verdict;
+                }
+            }
+
+            SKColor zoneColor = worst is { } w ? VerdictColor(w) : EmptyZoneColor;
+            bool severe = worst is Verdict.Nok or Verdict.Danger;
+            float zoneStroke = severe ? MathF.Round(stroke * 1.5f) : stroke;
+            string zoneText = severe ? $"{ZoneLabel} · {VerdictLabels.Get(worst!.Value)}" : ZoneLabel;
+
+            SKRect rect = ToPixels(drawnZone, width, height);
+            strokePaint.Color = zoneColor;
+            strokePaint.StrokeWidth = zoneStroke;
+            canvas.DrawRect(rect, strokePaint);
+            DrawLabel(canvas, zoneText, rect, zoneColor, zoneFont, fillPaint, zoneStroke, width, height, 255);
         }
 
         using SKImage snapshot = surface.Snapshot();
@@ -136,9 +161,9 @@ public sealed class SkiaFrameRenderer : IDisposable
         canvas.DrawImage(image, destination, DownscaleSampling);
     }
 
-    /// <summary>Label with a dark rounded background above <paramref name="box"/>, or just inside it if there is no room.</summary>
+    /// <summary>Label with a dark rounded background above <paramref name="box"/>, or just inside it if there is no room; <paramref name="alpha"/> dims it.</summary>
     private static void DrawLabel(SKCanvas canvas, string text, SKRect box, SKColor textColor, SKFont font,
-        SKPaint fillPaint, float stroke, int width, int height)
+        SKPaint fillPaint, float stroke, int width, int height, byte alpha)
     {
         SKFontMetrics metrics = font.Metrics;
         float padding = MathF.Round(font.Size * 0.3f);
@@ -156,12 +181,20 @@ public sealed class SkiaFrameRenderer : IDisposable
         }
 
         var background = new SKRect(left, top, left + labelWidth, top + labelHeight);
-        fillPaint.Color = LabelBackground;
+        fillPaint.Color = LabelBackground.WithAlpha((byte)(LabelBackground.Alpha * alpha / 255));
         canvas.DrawRoundRect(background, padding, padding, fillPaint);
 
         fillPaint.Color = textColor;
         canvas.DrawText(text, left + padding, top + padding - metrics.Ascent, font, fillPaint);
     }
+
+    private static SKColor VerdictColor(Verdict verdict) => verdict switch
+    {
+        Verdict.Ok => OkColor,
+        Verdict.Nok => NokColor,
+        Verdict.Danger => DangerColor,
+        _ => UnknownColor,
+    };
 
     private static SKRect ToPixels(NormalizedRect rect, int width, int height) =>
         new((float)(rect.X * width), (float)(rect.Y * height),

@@ -1,5 +1,7 @@
 using System.Threading.Channels;
 
+using Microsoft.Extensions.FileProviders;
+
 using QualityVision.Core.Frames;
 using QualityVision.Infrastructure;
 using QualityVision.Web.Components;
@@ -11,8 +13,26 @@ var builder = WebApplication.CreateBuilder(args);
 // Optional, git-ignored machine-local settings: the HTTPS endpoint (Kestrel:Endpoints:Https) with certificate
 // paths outside the repo. Environment variables and command-line args are re-added afterwards so they still
 // win over the local file (run-demo.sh can override anything).
+// rules.json (ADR-002) comes after appsettings*.json. It is read by absolute path from the content root (the project
+// folder under `dotnet run`, not the bin copy), so the file watcher watches the file people actually edit.
 builder.Configuration
     .AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true)
+    .AddJsonFile(source =>
+    {
+        source.Path = "rules.json";
+        source.FileProvider = new PhysicalFileProvider(builder.Environment.ContentRootPath);
+        source.Optional = false;
+        source.ReloadOnChange = true;
+        // A syntax error on reload must not go unnoticed (it would end in an unobserved watcher task): log it and
+        // keep running; the provider then keeps the last valid rules.
+        source.OnLoadException = ctx =>
+        {
+            using ILoggerFactory loggerFactory = LoggerFactory.Create(static b => b.AddSimpleConsole());
+            loggerFactory.CreateLogger("rules.json")
+                .LogWarning(ctx.Exception, "rules.json could not be read, keeping the previous rules");
+            ctx.Ignore = true;
+        };
+    })
     .AddEnvironmentVariables()
     .AddCommandLine(args);
 
@@ -49,6 +69,7 @@ builder.Services.AddSingleton<ICameraStatus>(static sp => sp.GetRequiredService<
 builder.Services.AddSingleton<PipelineMetrics>();
 builder.Services.AddSingleton<IPipelineMetrics>(static sp => sp.GetRequiredService<PipelineMetrics>());
 builder.Services.AddSingleton<FrameBroadcaster>();
+builder.Services.AddSingleton<IInspectionLog, InspectionLog>();
 builder.Services.AddSingleton<FrameUploadGate>();
 builder.Services.AddHostedService<CameraService>();
 builder.Services.AddHostedService<DetectionService>();
@@ -70,6 +91,7 @@ app.MapHealthChecks("/health");
 app.MapStaticAssets();
 app.MapCameraEndpoints();
 app.MapPipelineEndpoints();
+app.MapInspectionEndpoints();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

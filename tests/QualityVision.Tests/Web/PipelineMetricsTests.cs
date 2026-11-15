@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Time.Testing;
 
 using QualityVision.Core.Geometry;
+using QualityVision.Core.Rules;
 using QualityVision.Web.Pipeline;
 
 using CoreDetection = QualityVision.Core.Detection.Detection;
@@ -9,9 +10,10 @@ namespace QualityVision.Tests.Web;
 
 public sealed class PipelineMetricsTests
 {
-    private static readonly IReadOnlyList<CoreDetection> None = [];
+    private static readonly IReadOnlyList<ClassifiedDetection> None = [];
 
-    private static CoreDetection Cup() => new("cup", 0.8, new NormalizedRect(0.1, 0.1, 0.2, 0.2));
+    private static ClassifiedDetection Cup() =>
+        new(new CoreDetection("cup", 0.8, new NormalizedRect(0.1, 0.1, 0.2, 0.2)), Verdict.Nok);
 
     [Fact]
     public void NewInstance_AllValuesAreZeroOrEmpty()
@@ -161,13 +163,14 @@ public sealed class PipelineMetricsTests
     public void Record_DetectionsList_IsSnapshotUnaffectedByLaterMutation()
     {
         var metrics = new PipelineMetrics(new FakeTimeProvider());
-        var source = new List<CoreDetection> { Cup() };
+        var source = new List<ClassifiedDetection> { Cup() };
 
         metrics.Record(source, 10);
         source.Clear();
 
         Assert.Single(metrics.LastDetections);
-        Assert.Equal("cup", metrics.LastDetections[0].ClassName);
+        Assert.Equal("cup", metrics.LastDetections[0].Detection.ClassName);
+        Assert.Equal(Verdict.Nok, metrics.LastDetections[0].Verdict);
     }
 
     [Fact]

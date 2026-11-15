@@ -1,5 +1,6 @@
 using QualityVision.Core.Frames;
 using QualityVision.Core.Geometry;
+using QualityVision.Core.Rules;
 using QualityVision.Infrastructure.Imaging;
 
 using SkiaSharp;
@@ -43,10 +44,11 @@ public sealed class SkiaFrameRendererTests : IDisposable
         Assert.Equal(0xD8, jpeg[1]);
     }
 
-    private static readonly IReadOnlyList<CoreDetection> NoDetections = [];
+    private static readonly IReadOnlyList<ClassifiedDetection> NoDetections = [];
 
-    private static CoreDetection Box(double x, double y, double w, double h, string cls = "cup") =>
-        new(cls, 0.87, new NormalizedRect(x, y, w, h));
+    private static ClassifiedDetection Box(double x, double y, double w, double h, string cls = "cup",
+        Verdict verdict = Verdict.Ok) =>
+        new(new CoreDetection(cls, 0.87, new NormalizedRect(x, y, w, h)), verdict);
 
     [Fact]
     public void RenderJpeg_NoDetectionsNoZone_ReturnsValidJpegOfFrameSize()
@@ -122,7 +124,7 @@ public sealed class SkiaFrameRendererTests : IDisposable
     }
 
     [Fact]
-    public void RenderJpeg_DetectionBox_DrawsDefaultCyanEdge()
+    public void RenderJpeg_OkBox_DrawsGreenEdge()
     {
         using Frame frame = SolidFrame(640, 480);
 
@@ -130,16 +132,15 @@ public sealed class SkiaFrameRendererTests : IDisposable
 
         using SKBitmap bitmap = Decode(jpeg);
         SKColor edge = bitmap.GetPixel((int)(0.25 * 640), (int)(0.6 * 480)); // middle of the left edge
-        Assert.True(edge.Blue > 150 && edge.Green > 120 && edge.Red < 100, $"Expected cyan-ish, got {edge}.");
+        Assert.True(edge.Green > 150 && edge.Red < 100 && edge.Blue < 140, $"Expected green-ish, got {edge}.");
     }
 
     [Fact]
-    public void RenderJpeg_CustomBoxColor_IsUsedInsteadOfDefault()
+    public void RenderJpeg_NokBox_DrawsRedEdge()
     {
         using Frame frame = SolidFrame(640, 480);
 
-        byte[] jpeg = _renderer.RenderJpeg(frame, [Box(0.25, 0.4, 0.5, 0.4)], null, 95, 0,
-            static _ => SKColors.Red);
+        byte[] jpeg = _renderer.RenderJpeg(frame, [Box(0.25, 0.4, 0.5, 0.4, verdict: Verdict.Nok)], null, 95, 0);
 
         using SKBitmap bitmap = Decode(jpeg);
         SKColor edge = bitmap.GetPixel((int)(0.25 * 640), (int)(0.6 * 480));
@@ -147,7 +148,18 @@ public sealed class SkiaFrameRendererTests : IDisposable
     }
 
     [Fact]
-    public void RenderJpeg_ValidZone_DrawsGreenEdge()
+    public void RenderJpeg_IgnoredDetection_IsNotDrawn()
+    {
+        using Frame frame = SolidFrame(320, 240);
+
+        byte[] ignored = _renderer.RenderJpeg(frame, [Box(0.2, 0.2, 0.5, 0.5, "person", Verdict.Ignore)], null, 80, 0);
+        byte[] without = _renderer.RenderJpeg(frame, NoDetections, null, 80, 0);
+
+        Assert.Equal(without, ignored);
+    }
+
+    [Fact]
+    public void RenderJpeg_EmptyZone_DrawsWhiteEdge()
     {
         using Frame frame = SolidFrame(640, 480);
         var zone = new NormalizedRect(0.25, 0.4, 0.5, 0.4);
@@ -156,7 +168,53 @@ public sealed class SkiaFrameRendererTests : IDisposable
 
         using SKBitmap bitmap = Decode(jpeg);
         SKColor edge = bitmap.GetPixel((int)(0.25 * 640), (int)(0.6 * 480));
-        Assert.True(edge.Green > 150 && edge.Red < 100 && edge.Blue < 140, $"Expected green-ish, got {edge}.");
+        Assert.True(edge.Green > 180 && edge.Red > 180 && edge.Blue > 180, $"Expected white-ish, got {edge}.");
+    }
+
+    [Fact]
+    public void RenderJpeg_ZoneWithNokObject_DrawsRedEdge()
+    {
+        using Frame frame = SolidFrame(640, 480);
+        var zone = new NormalizedRect(0.1, 0.1, 0.8, 0.8);
+
+        byte[] jpeg = _renderer.RenderJpeg(frame, [Box(0.4, 0.4, 0.2, 0.2, verdict: Verdict.Nok)], zone, 95, 0);
+
+        using SKBitmap bitmap = Decode(jpeg);
+        SKColor edge = bitmap.GetPixel((int)(0.1 * 640) + 1, (int)(0.5 * 480));
+        Assert.True(edge.Red > 180 && edge.Green < 100 && edge.Blue < 100, $"Expected red-ish, got {edge}.");
+    }
+
+    [Fact]
+    public void RenderJpeg_ZoneWithDangerObject_DrawsOrangeEdge()
+    {
+        using Frame frame = SolidFrame(640, 480);
+        var zone = new NormalizedRect(0.1, 0.1, 0.8, 0.8);
+
+        byte[] jpeg = _renderer.RenderJpeg(frame, [Box(0.4, 0.4, 0.2, 0.2, verdict: Verdict.Danger)], zone, 95, 0);
+
+        using SKBitmap bitmap = Decode(jpeg);
+        SKColor edge = bitmap.GetPixel((int)(0.1 * 640) + 1, (int)(0.5 * 480));
+        Assert.True(edge.Red > 200 && edge.Green is > 80 and < 170 && edge.Blue < 90, $"Expected orange, got {edge}.");
+    }
+
+    [Fact]
+    public void RenderJpeg_ObjectOutsideZone_IsDimmedComparedToObjectInside()
+    {
+        using Frame frame = SolidFrame(640, 480);
+        var zone = new NormalizedRect(0.05, 0.05, 0.4, 0.9);
+
+        byte[] jpeg = _renderer.RenderJpeg(
+            frame,
+            [Box(0.1, 0.3, 0.2, 0.3), Box(0.6, 0.3, 0.2, 0.3)], // centres x=0.2 (inside) and x=0.7 (outside)
+            zone, 95, 0);
+
+        using SKBitmap bitmap = Decode(jpeg);
+        int y = (int)(0.45 * 480);
+        SKColor inside = bitmap.GetPixel((int)(0.1 * 640), y);
+        SKColor outside = bitmap.GetPixel((int)(0.6 * 640), y);
+        Assert.True(inside.Green > 150, $"Inside box should be full green, got {inside}.");
+        Assert.True(outside.Green > 50, $"Outside box should still be visible, got {outside}.");
+        Assert.True(outside.Green < inside.Green - 40, $"Outside should be dimmed: inside {inside}, outside {outside}.");
     }
 
     [Fact]

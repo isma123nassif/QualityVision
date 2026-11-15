@@ -4,16 +4,18 @@ using Microsoft.Extensions.Options;
 
 using QualityVision.Core.Detection;
 using QualityVision.Core.Frames;
+using QualityVision.Core.Inspection;
+using QualityVision.Core.Rules;
 using QualityVision.Infrastructure.Detection;
 using QualityVision.Infrastructure.Imaging;
 
 namespace QualityVision.Web.Pipeline;
 
 /// <summary>
-/// Consumer side of the frame channel. Per frame: YOLO detection (timed), metrics update, one annotated JPEG
-/// (Prüfzone + boxes drawn) published to <see cref="FrameBroadcaster"/> for <c>GET /stream</c>.
-/// M4 inserts the RulesEngine + ZoneEntryTracker after detection. <c>Stream:MaxFps</c> stays an upper bound.
-/// Each frame is disposed by this service after processing.
+/// Consumer side of the frame channel. Per frame: YOLO detection (timed), verdicts from the RulesEngine (one
+/// <see cref="RuleSet"/> snapshot per frame), Prüfzone filter + <see cref="ZoneEntryTracker"/> (new entries go to
+/// <see cref="IInspectionLog"/>), metrics update, and one annotated JPEG published to <see cref="FrameBroadcaster"/>
+/// for <c>GET /stream</c>. <c>Stream:MaxFps</c> stays an upper bound. Each frame is disposed after processing.
 /// </summary>
 public sealed class DetectionService(
     Channel<Frame> frames,
@@ -24,6 +26,8 @@ public sealed class DetectionService(
     FrameBroadcaster broadcaster,
     IOptionsMonitor<StreamOptions> streamOptions,
     IOptionsMonitor<InspectionOptions> inspectionOptions,
+    IRuleSetProvider ruleSetProvider,
+    IInspectionLog inspectionLog,
     TimeProvider timeProvider,
     ILogger<DetectionService> logger) : BackgroundService
 {
@@ -32,6 +36,9 @@ public sealed class DetectionService(
 
     private long _lastErrorLog;
     private bool _errorLogged;
+    // Plain field: only the single detection loop touches it (no Interlocked needed).
+    private long _eventSequence;
+    private ZoneEntryTracker? _tracker;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -80,22 +87,36 @@ public sealed class DetectionService(
                     InspectionOptions inspection = inspectionOptions.CurrentValue;
 
                     metrics.MarkFrameSeen();
-                    IReadOnlyList<Detection> detections;
+                    IReadOnlyList<ClassifiedDetection> classified;
+                    bool detectionFailed = false;
                     try
                     {
                         long inferenceStart = timeProvider.GetTimestamp();
-                        detections = detector.Detect(frame);
+                        IReadOnlyList<Detection> detections = detector.Detect(frame);
                         double inferenceMs = timeProvider.GetElapsedTime(inferenceStart).TotalMilliseconds;
-                        metrics.Record(detections, inferenceMs);
+
+                        // One rule snapshot per frame: every detection of this frame is judged by the same rules.
+                        RuleSet rules = ruleSetProvider.Current;
+                        classified = detections
+                            .Select(d => new ClassifiedDetection(d, RulesEngine.Evaluate(d, rules)))
+                            .ToArray();
+                        metrics.Record(classified, inferenceMs);
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
-                        // Inference failure must not freeze the live stream: show the raw frame without boxes.
+                        // Inference failure must not freeze the live stream: show the raw frame (and the zone)
+                        // without boxes, and do not feed the tracker, so a failed frame never counts as absence.
                         LogFrameError(ex, frame.Sequence);
-                        detections = [];
+                        classified = [];
+                        detectionFailed = true;
                     }
 
-                    byte[] jpeg = renderer.RenderJpeg(frame, detections, inspection.Zone, stream.JpegQuality, stream.MaxWidth);
+                    if (!detectionFailed)
+                    {
+                        CountZoneEntries(classified, inspection);
+                    }
+
+                    byte[] jpeg = renderer.RenderJpeg(frame, classified, inspection.Zone, stream.JpegQuality, stream.MaxWidth);
                     broadcaster.Publish(jpeg);
 
                     // Upper bound: wait out the rest of the frame interval. Meanwhile the channel keeps only the
@@ -115,6 +136,43 @@ public sealed class DetectionService(
             {
                 await Task.Delay(delay, timeProvider, stoppingToken);
             }
+        }
+    }
+
+    /// <summary>
+    /// Prüfzone + debounce: feeds the in-zone detections to the tracker and records every new entry as an
+    /// <see cref="InspectionEvent"/> (time stamped here, not in the tracker).
+    /// </summary>
+    private void CountZoneEntries(IReadOnlyList<ClassifiedDetection> classified, InspectionOptions inspection)
+    {
+        // The tracker is single-threaded (only this loop uses it); recreated if AbsenceFrames is changed on reload.
+        IReadOnlyList<ClassifiedDetection> inZone = InspectionZone.FilterInside(classified, inspection.Zone);
+        if (_tracker is null || _tracker.AbsenceFrames != inspection.AbsenceFrames)
+        {
+            bool recreated = _tracker is not null;
+            _tracker = new ZoneEntryTracker(inspection.AbsenceFrames);
+            if (recreated)
+            {
+                // Prime the new tracker with this frame and discard the entries: otherwise everything already in
+                // the zone would be counted a second time just because AbsenceFrames changed.
+                _ = _tracker.Update(inZone);
+                return;
+            }
+        }
+
+        IReadOnlyList<ClassifiedDetection> entries = _tracker.Update(inZone);
+        foreach (ClassifiedDetection entry in entries)
+        {
+            var inspectionEvent = new InspectionEvent(
+                ++_eventSequence,
+                timeProvider.GetUtcNow(),
+                entry.Detection.ClassName,
+                GermanLabels.Get(entry.Detection.ClassName),
+                entry.Verdict,
+                entry.Detection.Confidence);
+            inspectionLog.Add(inspectionEvent);
+            logger.LogInformation("Inspection {Sequence}: {Class} → {Verdict} ({Confidence:P0})",
+                inspectionEvent.Sequence, inspectionEvent.ClassName, inspectionEvent.Verdict, inspectionEvent.Confidence);
         }
     }
 

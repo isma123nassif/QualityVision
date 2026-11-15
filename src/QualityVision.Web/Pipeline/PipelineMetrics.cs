@@ -1,4 +1,4 @@
-using QualityVision.Core.Detection;
+using QualityVision.Core.Rules;
 
 namespace QualityVision.Web.Pipeline;
 
@@ -13,8 +13,8 @@ public interface IPipelineMetrics
 
     double LastInferenceMs { get; }
 
-    /// <summary>Immutable snapshot of the detections of the latest processed frame.</summary>
-    IReadOnlyList<Detection> LastDetections { get; }
+    /// <summary>Immutable snapshot of the classified detections of the latest processed frame.</summary>
+    IReadOnlyList<ClassifiedDetection> LastDetections { get; }
 
     long FramesProcessed { get; }
 
@@ -35,7 +35,7 @@ public sealed class PipelineMetrics(TimeProvider timeProvider) : IPipelineMetric
     private static readonly TimeSpan FpsWindow = TimeSpan.FromSeconds(1);
 
     private readonly Lock _gate = new();
-    private IReadOnlyList<Detection> _lastDetections = [];
+    private IReadOnlyList<ClassifiedDetection> _lastDetections = [];
     private double _fps;
     private double _ema;
     private double _last;
@@ -89,7 +89,7 @@ public sealed class PipelineMetrics(TimeProvider timeProvider) : IPipelineMetric
         }
     }
 
-    public IReadOnlyList<Detection> LastDetections => Volatile.Read(ref _lastDetections);
+    public IReadOnlyList<ClassifiedDetection> LastDetections => Volatile.Read(ref _lastDetections);
 
     public long FramesProcessed => Interlocked.Read(ref _framesProcessed);
 
@@ -112,7 +112,7 @@ public sealed class PipelineMetrics(TimeProvider timeProvider) : IPipelineMetric
     public void MarkModelReady() => _modelReady = true;
 
     /// <summary>Records one processed frame.</summary>
-    public void Record(IReadOnlyList<Detection> detections, double inferenceMs)
+    public void Record(IReadOnlyList<ClassifiedDetection> detections, double inferenceMs)
     {
         ArgumentNullException.ThrowIfNull(detections);
 

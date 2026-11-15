@@ -1,0 +1,11 @@
+{
+  "Rules": {
+    "Classes": {
+      "bottle": "Ok",
+      "cell phone": "Ok",
+      "cup": "Nok",
+      "scissors": "Danger",
+      "person": "Ignore"
+    }
+  }
+}

@@ -192,3 +192,118 @@ h1:focus {
   color: #fb923c;
   overflow-wrap: anywhere;
 }
+
+/* ---- Verdict counters and recent inspections (M4) ---- */
+.counters {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.counter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-left-width: 8px;
+  border-radius: 0.5rem;
+  background: var(--surface);
+}
+
+.counter .label {
+  font-size: 1.1rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.counter .value {
+  font-size: 2.5rem;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.counter.ok { border-left-color: #22c55e; }
+.counter.ok .value { color: #4ade80; }
+.counter.nok { border-left-color: #ef4444; }
+.counter.nok .value { color: #f87171; }
+.counter.danger { border-left-color: #f97316; }
+.counter.danger .value { color: #fb923c; }
+.counter.unknown { border-left-color: #9ca3af; }
+.counter.unknown .value { color: #d1d5db; }
+.counter.rate { border-left-color: #38bdf8; }
+.counter.rate .value { color: #7dd3fc; }
+
+.counter .sub {
+  font-size: 0.9rem;
+  color: var(--muted);
+  text-transform: none;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .counters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.recent-list li {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.35rem 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+
+.recent-time {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.recent-name {
+  flex: 1;
+}
+
+.recent-empty {
+  font-size: 1.5rem;
+}
+
+.verdict {
+  display: inline-block;
+  min-width: 6.5rem;
+  padding: 0.1rem 0.6rem;
+  border-radius: 0.4rem;
+  font-weight: 700;
+  text-align: center;
+  color: #0f172a;
+}
+
+.verdict.ok { background: #22c55e; }
+.verdict.nok { background: #ef4444; }
+.verdict.danger { background: #f97316; }
+.verdict.unknown { background: #9ca3af; }
+
+/* Ignore is never judged: outlined, muted, no fill, so it cannot be mistaken for Unbekannt. */
+.verdict.ignore {
+  background: transparent;
+  border: 1px dashed var(--muted);
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.det-list li .verdict {
+  margin-left: auto;
+  min-width: 5rem;
+  font-size: 1.1rem;
+}

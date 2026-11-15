@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using OpenCvSharp;
 
 using QualityVision.Core.Frames;
+using QualityVision.Core.Rules;
 using QualityVision.Infrastructure.Detection;
 using QualityVision.Infrastructure.Imaging;
 
@@ -210,7 +211,9 @@ public sealed class YoloObjectDetectorIntegrationTests : IDisposable
         IReadOnlyList<CoreDetection> detections = _detector.Detect(frame);
         using var renderer = new SkiaFrameRenderer();
 
-        byte[] jpeg = renderer.RenderJpeg(frame, detections, new QualityVision.Core.Geometry.NormalizedRect(0.1, 0.1, 0.5, 0.5), 80, 1280);
+        var classified = detections.Select(d => new ClassifiedDetection(d, Verdict.Unknown)).ToList();
+
+        byte[] jpeg = renderer.RenderJpeg(frame, classified, new QualityVision.Core.Geometry.NormalizedRect(0.1, 0.1, 0.5, 0.5), 80, 1280);
 
         Assert.Equal(0xFF, jpeg[0]);
         Assert.Equal(0xD8, jpeg[1]);

@@ -4,13 +4,15 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
 using QualityVision.Core.Detection;
+using QualityVision.Core.Rules;
 using QualityVision.Infrastructure.Camera;
 using QualityVision.Infrastructure.Detection;
 using QualityVision.Infrastructure.Imaging;
+using QualityVision.Infrastructure.Rules;
 
 namespace QualityVision.Infrastructure;
 
-/// <summary>Registers the Infrastructure adapters (camera sources, YOLO detector, frame renderer) and their options.</summary>
+/// <summary>Registers the Infrastructure adapters (camera sources, YOLO detector, frame renderer, rules) and their options.</summary>
 public static class DependencyInjection
 {
     public static IServiceCollection AddQualityVisionInfrastructure(this IServiceCollection services,
@@ -51,6 +53,14 @@ public static class DependencyInjection
         services.AddSingleton<YoloObjectDetector>();
         services.AddSingleton<IObjectDetector>(static sp => sp.GetRequiredService<YoloObjectDetector>());
         services.AddSingleton<SkiaFrameRenderer>();
+
+        // Rules (ADR-002): bound from rules.json (loaded by the host with reloadOnChange). Verdict strings are
+        // validated by OptionsRuleSetProvider itself, which fails fast at construction and keeps the last valid
+        // RuleSet on a bad reload. Exposed as itself and as the Core port, same instance.
+        services.AddOptions<RulesOptions>()
+            .Bind(configuration.GetSection(RulesOptions.SectionName));
+        services.AddSingleton<OptionsRuleSetProvider>();
+        services.AddSingleton<IRuleSetProvider>(static sp => sp.GetRequiredService<OptionsRuleSetProvider>());
 
         return services;
     }

@@ -1,4 +1,8 @@
+using Microsoft.Extensions.Options;
+
 using QualityVision.Core.Detection;
+using QualityVision.Core.Inspection;
+using QualityVision.Core.Rules;
 using QualityVision.Web.Pipeline;
 
 namespace QualityVision.Web.Endpoints;
@@ -12,14 +16,18 @@ public static class PipelineEndpoints
         return endpoints;
     }
 
-    private static IResult GetMetrics(IPipelineMetrics metrics)
+    private static IResult GetMetrics(IPipelineMetrics metrics, IOptionsMonitor<InspectionOptions> inspectionOptions)
     {
-        var detections = metrics.LastDetections.Select(static d => new
+        var zone = inspectionOptions.CurrentValue.Zone;
+        var detections = metrics.LastDetections.Select(c => new
         {
-            className = d.ClassName,
-            label = GermanLabels.Get(d.ClassName),
-            confidence = d.Confidence,
-            box = new { x = d.Box.X, y = d.Box.Y, width = d.Box.Width, height = d.Box.Height },
+            className = c.Detection.ClassName,
+            label = GermanLabels.Get(c.Detection.ClassName),
+            confidence = c.Detection.Confidence,
+            verdict = c.Verdict.ToString(),
+            verdictLabel = VerdictLabels.Get(c.Verdict),
+            inZone = c.Verdict != Verdict.Ignore && InspectionZone.IsInside(c.Detection, zone),
+            box = new { x = c.Detection.Box.X, y = c.Detection.Box.Y, width = c.Detection.Box.Width, height = c.Detection.Box.Height },
         }).ToArray();
 
         return Results.Ok(new

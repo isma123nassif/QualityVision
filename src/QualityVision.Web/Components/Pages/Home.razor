@@ -1,10 +1,13 @@
 ﻿@page "/"
 @using System.Globalization
 @using QualityVision.Core.Detection
+@using QualityVision.Core.Inspection
+@using QualityVision.Core.Rules
 @using QualityVision.Web.Pipeline
 @implements IDisposable
 @inject ICameraStatus CameraStatus
 @inject IPipelineMetrics Metrics
+@inject IInspectionLog InspectionLog
 @inject TimeProvider Clock
 
 <PageTitle>QualityVision – Prüfstation</PageTitle>
@@ -19,6 +22,34 @@
         <div class="live-frame">
             <img src="/stream" alt="Livebild der Prüfstation" />
         </div>
+
+        <div class="counters" aria-label="Zähler">
+            <div class="counter ok"><span class="label">i.O.</span><span class="value">@_counts.Ok</span></div>
+            <div class="counter nok"><span class="label">n.i.O.</span><span class="value">@_counts.Nok</span></div>
+            <div class="counter danger"><span class="label">Gefahr</span><span class="value">@_counts.Danger</span></div>
+            <div class="counter unknown"><span class="label">Unbekannt</span><span class="value">@_counts.Unknown</span></div>
+            <div class="counter rate"><span class="label">Ausschussquote</span><span class="value">@((_counts.ScrapRate * 100).ToString("0.0", De)) %</span><span class="sub">n.i.O. / (i.O. + n.i.O.)</span></div>
+        </div>
+
+        <h2 class="panel-title">Letzte Prüfungen</h2>
+        @if (_recent.Count == 0)
+        {
+            <p class="muted recent-empty">Noch keine Prüfungen</p>
+        }
+        else
+        {
+            <ul class="recent-list">
+                @foreach (var e in _recent)
+                {
+                    <li>
+                        <span class="recent-time">@e.Timestamp.ToLocalTime().ToString("HH:mm:ss", De)</span>
+                        <span class="recent-name">@e.DisplayName</span>
+                        <span class="verdict @VerdictClass(e.Verdict)">@VerdictLabels.Get(e.Verdict)</span>
+                        <span class="det-conf">@e.Confidence.ToString("P0", De)</span>
+                    </li>
+                }
+            </ul>
+        }
     </section>
 
     <aside class="status" aria-label="Kamerastatus">
@@ -84,7 +115,7 @@
                 <ul class="det-list">
                     @foreach (var d in _detections)
                     {
-                        <li><span>@GermanLabels.Get(d.ClassName)</span><span class="det-conf">@d.Confidence.ToString("P0", De)</span></li>
+                        <li><span>@GermanLabels.Get(d.Detection.ClassName)</span><span class="verdict @VerdictClass(d.Verdict)">@VerdictLabels.Get(d.Verdict)</span><span class="det-conf">@d.Detection.Confidence.ToString("P0", De)</span></li>
                     }
                 </ul>
             }
@@ -101,8 +132,10 @@
     private string? _lastError;
     private double _procFps;
     private double _inferenceMs;
-    private IReadOnlyList<Detection> _detections = [];
+    private IReadOnlyList<ClassifiedDetection> _detections = [];
     private int _detectionTotal;
+    private InspectionCounts _counts;
+    private IReadOnlyList<InspectionEvent> _recent = [];
     private static readonly CultureInfo De = CultureInfo.GetCultureInfo("de-DE");
 
     protected override void OnInitialized()
@@ -142,7 +175,15 @@
         _inferenceMs = Metrics.InferenceMs;
         var all = Metrics.LastDetections;
         _detectionTotal = all.Count;
-        _detections = all.OrderByDescending(d => d.Confidence).Take(8).ToList();
+        // Ignored classes (e.g. person) are not shown in the list; they still count in the total.
+        _detections = all
+            .Where(d => d.Verdict != Verdict.Ignore)
+            .OrderByDescending(d => d.Detection.Confidence)
+            .Take(8)
+            .ToList();
+
+        _counts = InspectionLog.Counts;
+        _recent = InspectionLog.Recent(10);
 
         var last = CameraStatus.LastFrameAt;
         if (last is null)
@@ -155,6 +196,15 @@
             _lastFrameText = ms < 10_000 ? $"vor {ms} ms" : $"vor {ms / 1000} s";
         }
     }
+
+    private static string VerdictClass(Verdict v) => v switch
+    {
+        Verdict.Ok => "ok",
+        Verdict.Nok => "nok",
+        Verdict.Danger => "danger",
+        Verdict.Ignore => "ignore",
+        _ => "unknown",
+    };
 
     public void Dispose()
     {
