@@ -50,6 +50,7 @@
         <PerMinuteChart Buckets="_buckets" />
 
         <h2 class="panel-title">Ereignisprotokoll</h2>
+        <a class="btn" href="/api/inspection/export.csv" download>CSV exportieren</a>
         @if (_recent.Count == 0)
         {
             <p class="muted recent-empty">Noch keine Prüfungen</p>

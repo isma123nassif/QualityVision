@@ -26,6 +26,14 @@ public sealed class CameraOptions
     /// <summary>Upper bound on frames produced per second by the OpenCV sources.</summary>
     public int MaxFps { get; set; } = 20;
 
+    /// <summary>
+    /// If set, every raw captured frame is recorded to this mp4 (relative = content root) for the video Plan B.
+    /// </summary>
+    public string? RecordTo { get; set; }
+
+    /// <summary>Maximum recording length in seconds of captured time.</summary>
+    public int RecordMaxSeconds { get; set; } = 120;
+
     /// <summary>Longest side allowed for a produced frame.</summary>
     public int MaxSide => Math.Max(RequestedWidth, RequestedHeight);
 }

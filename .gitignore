@@ -495,3 +495,9 @@ spikes/**/certs/
 __pycache__/
 samples/*.local.*
 appsettings.Local.json
+
+# SQLite inspection database (M6)
+data/
+*.db
+*.db-shm
+*.db-wal

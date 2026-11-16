@@ -1,5 +1,7 @@
 using System.Threading.Channels;
 
+using Microsoft.Extensions.Options;
+
 using QualityVision.Core.Frames;
 using QualityVision.Infrastructure.Camera;
 
@@ -17,6 +19,8 @@ public sealed class CameraService(
     FrameSourceFactory sourceFactory,
     Channel<Frame> frames,
     CameraStatus status,
+    IOptionsMonitor<CameraOptions> cameraOptions,
+    IHostEnvironment environment,
     TimeProvider timeProvider,
     ILogger<CameraService> logger) : BackgroundService
 {
@@ -25,6 +29,8 @@ public sealed class CameraService(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Optional Plan-B recording of raw frames; it lives across reconnects and is finalized on shutdown.
+        using FrameRecorder? recorder = CreateRecorder();
         TimeSpan backoff = InitialBackoff;
 
         while (!stoppingToken.IsCancellationRequested)
@@ -49,6 +55,9 @@ public sealed class CameraService(
                     }
 
                     status.ReportFrame();
+
+                    // The recorder only reads the frame during this call (never throws), so ownership is unaffected.
+                    recorder?.TryWrite(frame);
 
                     // Ownership transfer: once written, the channel owns the frame. When the channel is full,
                     // DropOldest evicts the oldest frame and the itemDropped callback disposes it.
@@ -80,6 +89,26 @@ public sealed class CameraService(
             logger.LogInformation("Reconnecting frame source in {Delay}", backoff);
             await Task.Delay(backoff, timeProvider, stoppingToken);
             backoff = TimeSpan.FromTicks(Math.Min(backoff.Ticks * 2, MaxBackoff.Ticks));
+        }
+    }
+
+    private FrameRecorder? CreateRecorder()
+    {
+        CameraOptions options = cameraOptions.CurrentValue;
+        if (string.IsNullOrWhiteSpace(options.RecordTo))
+        {
+            return null;
+        }
+
+        try
+        {
+            string path = Path.GetFullPath(options.RecordTo, environment.ContentRootPath);
+            return new FrameRecorder(path, options.RecordMaxSeconds, logger);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Invalid Camera:RecordTo {Path}; recording disabled", options.RecordTo);
+            return null;
         }
     }
 

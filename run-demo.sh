@@ -2,7 +2,7 @@
 # Runs the demo in the Production environment from a published build.
 # (A Debug bin run without Development gives HTTP 500 for _framework/blazor.web.js and scoped CSS:
 #  static web assets are only resolved from the manifest in Development.)
-# Usage: ./run-demo.sh [--no-build]
+# Usage: ./run-demo.sh [--no-build] [--video]   (--video = Plan B, plays samples/demo.mp4)
 set -euo pipefail
 
 cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
@@ -10,10 +10,12 @@ cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 PROJECT=src/QualityVision.Web
 PUBLISH_DIR=artifacts/demo
 BUILD=1
+VIDEO=0
 for arg in "$@"; do
   case "$arg" in
     --no-build) BUILD=0 ;;
-    -h|--help) echo "Usage: $0 [--no-build]"; exit 0 ;;
+    --video) VIDEO=1 ;;
+    -h|--help) echo "Usage: $0 [--no-build] [--video]"; exit 0 ;;
     *) echo "Unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -40,6 +42,7 @@ if [[ ! -f "$PUBLISH_DIR/rules.json" ]]; then
 fi
 echo "rules.json (hot-reload, edit this file): $(pwd)/$PUBLISH_DIR/rules.json"
 echo "  note: a republish overwrites it only if the source copy is newer."
+echo "inspection database (history/counters; deleted by rm -rf artifacts): $(pwd)/$PUBLISH_DIR/data/qualityvision.db"
 
 # 4. Preflight
 if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
@@ -62,6 +65,18 @@ echo "Dashboard: http://$IP:5080"
 echo "Phone:     https://$IP:5443/kamera"
 echo "Health:    http://$IP:5080/health"
 echo
+
+# Plan B: play samples/demo.mp4 (absolute path: the app runs from the publish dir, not the repo root)
+if [[ $VIDEO -eq 1 ]]; then
+  VIDEO_FILE="$(pwd)/samples/demo.mp4"
+  if [[ ! -f "$VIDEO_FILE" ]]; then
+    echo "error: $VIDEO_FILE not found (see samples/README.md to record it)." >&2
+    exit 1
+  fi
+  export Camera__Source=VideoFile
+  export Camera__VideoFile="$VIDEO_FILE"
+  echo "Plan B: video file $VIDEO_FILE"
+fi
 
 # 5. Run (exec so SIGTERM reaches the app)
 cd "$PUBLISH_DIR"

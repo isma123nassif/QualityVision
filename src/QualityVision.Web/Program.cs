@@ -39,10 +39,20 @@ builder.Configuration
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddHealthChecks()
-    .AddCheck<ModelHealthCheck>("model");
+    .AddCheck<ModelHealthCheck>("model")
+    .AddCheck<DatabaseHealthCheck>("database");
 
 // Infrastructure: CameraOptions, TimeProvider, frame sources, YOLO detector, Skia renderer.
 builder.Services.AddQualityVisionInfrastructure(builder.Configuration);
+
+// SQLite persistence (M6): the data source is relative to the content root; the folder is created here.
+{
+    var inspectionsCs = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(
+        builder.Configuration.GetConnectionString("Inspections") ?? "Data Source=data/qualityvision.db");
+    inspectionsCs.DataSource = Path.GetFullPath(inspectionsCs.DataSource, builder.Environment.ContentRootPath);
+    Directory.CreateDirectory(Path.GetDirectoryName(inspectionsCs.DataSource)!);
+    builder.Services.AddInspectionPersistence(inspectionsCs.ConnectionString);
+}
 
 builder.Services.AddOptions<StreamOptions>()
     .BindConfiguration(StreamOptions.SectionName)
@@ -72,6 +82,10 @@ builder.Services.AddSingleton<FrameBroadcaster>();
 builder.Services.AddSingleton<IInspectionLog, InspectionLog>();
 builder.Services.AddSingleton<FrameUploadGate>();
 builder.Services.AddSingleton<RulesFileService>();
+// Order matters: hosted services start sequentially. The initializer (schema + seeding today's counters) must
+// complete before the pipeline produces events.
+builder.Services.AddHostedService<InspectionDatabaseInitializer>();
+builder.Services.AddHostedService<EventPersistenceService>();
 builder.Services.AddHostedService<CameraService>();
 builder.Services.AddHostedService<DetectionService>();
 

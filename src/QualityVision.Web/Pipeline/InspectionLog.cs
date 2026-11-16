@@ -20,7 +20,15 @@ public interface IInspectionLog
     /// <param name="max">Maximum number of recent events (newest first).</param>
     (InspectionCounts Counts, IReadOnlyList<InspectionEvent> Recent) Snapshot(int max);
 
-    /// <summary>Counters since app start (M6 will load them from the database).</summary>
+    /// <summary>
+    /// Replaces counters and the ring buffer with persisted state (called once at startup, before the pipeline runs).
+    /// Raises no <see cref="EventAdded"/>, so seeded events are not persisted again.
+    /// </summary>
+    /// <param name="counts">Today's counts per verdict.</param>
+    /// <param name="recent">Latest events of today, newest first.</param>
+    void Seed(InspectionCounts counts, IReadOnlyList<InspectionEvent> recent);
+
+    /// <summary>Counters for the current day (seeded from the database at startup).</summary>
     InspectionCounts Counts { get; }
 
     /// <summary>
@@ -95,6 +103,24 @@ public sealed class InspectionLog : IInspectionLog
             lock (_gate)
             {
                 return _counts;
+            }
+        }
+    }
+
+    public void Seed(InspectionCounts counts, IReadOnlyList<InspectionEvent> recent)
+    {
+        ArgumentNullException.ThrowIfNull(recent);
+
+        lock (_gate)
+        {
+            _counts = counts;
+            _next = 0;
+            _count = 0;
+            for (int i = Math.Min(recent.Count, Capacity) - 1; i >= 0; i--)
+            {
+                _buffer[_next] = recent[i];
+                _next = (_next + 1) % Capacity;
+                _count++;
             }
         }
     }

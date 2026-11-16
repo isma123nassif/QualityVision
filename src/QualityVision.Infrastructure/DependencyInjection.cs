@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -8,6 +9,7 @@ using QualityVision.Core.Rules;
 using QualityVision.Infrastructure.Camera;
 using QualityVision.Infrastructure.Detection;
 using QualityVision.Infrastructure.Imaging;
+using QualityVision.Infrastructure.Persistence;
 using QualityVision.Infrastructure.Rules;
 
 namespace QualityVision.Infrastructure;
@@ -62,6 +64,18 @@ public static class DependencyInjection
         services.AddSingleton<OptionsRuleSetProvider>();
         services.AddSingleton<IRuleSetProvider>(static sp => sp.GetRequiredService<OptionsRuleSetProvider>());
 
+        return services;
+    }
+
+    /// <summary>Registers the SQLite inspection store (<see cref="IDbContextFactory{TContext}"/>).</summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="connectionString">SQLite connection string with an already resolved path.</param>
+    public static IServiceCollection AddInspectionPersistence(this IServiceCollection services, string connectionString)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
+
+        services.AddDbContextFactory<InspectionDbContext>(o => o.UseSqlite(connectionString));
         return services;
     }
 
