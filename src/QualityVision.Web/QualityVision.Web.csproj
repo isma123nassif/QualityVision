@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <None Include="..\..\models\yolo11n.onnx" Link="models\yolo11n.onnx" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\models\yolo11m.onnx" Link="models\yolo11m.onnx" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
@@ -19,6 +20,12 @@
          When published, the content root is the current working directory: start the app from the publish folder
          (or pass the contentRoot command-line argument), otherwise the required rules.json is not found. -->
     <Content Update="rules.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ExcludeAssets does not flow to consuming projects, so it is repeated here: the CPU-only native
+         libonnxruntime.so of Microsoft.ML.OnnxRuntime must not overwrite the GPU build (see ADR-004). -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" ExcludeAssets="native;runtime" />
   </ItemGroup>
 
 </Project>

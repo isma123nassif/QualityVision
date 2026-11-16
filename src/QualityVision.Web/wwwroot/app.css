@@ -307,3 +307,20 @@ h1:focus {
   min-width: 5rem;
   font-size: 1.1rem;
 }
+
+/* ---- Detection device badge (M4b): green = CUDA, amber = CPU fallback; text label always shown ---- */
+.device-badge {
+  display: inline-block;
+  align-self: flex-start;
+  margin-top: 0.25rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 0.4rem;
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1.2;
+  color: #0f172a;
+  overflow-wrap: anywhere;
+}
+
+.device-badge.gpu { background: #22c55e; }
+.device-badge.cpu { background: #f59e0b; }

@@ -26,6 +26,12 @@ public interface IPipelineMetrics
 
     /// <summary>Time since the last frame reached detection (success or not), or null if none has.</summary>
     TimeSpan? SinceLastFrame { get; }
+
+    /// <summary>Active inference device, e.g. "GPU (CUDA 0)" or "CPU"; empty until the detector reported it.</summary>
+    string Device { get; }
+
+    /// <summary>File name of the active model, e.g. "yolo11m.onnx"; empty until the detector reported it.</summary>
+    string Model { get; }
 }
 
 /// <summary>Thread-safe singleton: written by <see cref="DetectionService"/>, read by UI/endpoints.</summary>
@@ -49,6 +55,21 @@ public sealed class PipelineMetrics(TimeProvider timeProvider) : IPipelineMetric
     private long _lastFrameTimestamp;
     private volatile bool _hasSuccess;
     private volatile bool _hasFrame;
+    private string _device = string.Empty;
+    private string _model = string.Empty;
+
+    public string Device => Volatile.Read(ref _device);
+
+    public string Model => Volatile.Read(ref _model);
+
+    /// <summary>Records the device and model the detector selected (set once at startup).</summary>
+    public void SetModelInfo(string device, string model)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        ArgumentNullException.ThrowIfNull(model);
+        Volatile.Write(ref _device, device);
+        Volatile.Write(ref _model, model);
+    }
 
     public double ProcessedFps
     {

@@ -11,6 +11,20 @@
     <!-- Detection (M3). SkiaSharp itself comes transitively from YoloDotNet and is pinned in CPM. -->
     <PackageReference Include="YoloDotNet" />
     <PackageReference Include="YoloDotNet.ExecutionProvider.Cpu" />
+    <!-- GPU (M4b, ADR-004): CUDA execution provider plus the CUDA 13 build of ONNX Runtime. -->
+    <PackageReference Include="YoloDotNet.ExecutionProvider.Cuda" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.Gpu" />
+    <!--
+      The CPU provider depends on Microsoft.ML.OnnxRuntime, whose native libonnxruntime.so is the CPU-only build.
+      Both ONNX Runtime packages ship a native file with that same name; when the CPU one wins the copy it
+      overwrites the GPU one and CUDA fails at runtime. Referencing the package directly with ExcludeAssets keeps
+      its managed API but drops its native and runtime assets, so only the GPU build of libonnxruntime.so is
+      copied. The GPU build also contains the CPU execution provider, so CPU inference keeps working.
+      ExcludeAssets does NOT flow through ProjectReference: every executable project (Web, Tests) must repeat
+      this PackageReference itself, otherwise the CPU library lands in its output. Guarded by the test
+      OnnxRuntimeNativeLibrary_InOutput_IsGpuBuild (see ADR-004).
+    -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" ExcludeAssets="native;runtime" />
     <!-- Self-contained libSkiaSharp.so for Linux (no fontconfig/freetype system dependencies). -->
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
   </ItemGroup>

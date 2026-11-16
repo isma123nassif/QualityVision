@@ -12,26 +12,27 @@ public sealed class ModelHealthCheck(IPipelineMetrics metrics) : IHealthCheck
 
     public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
+        string info = string.IsNullOrEmpty(metrics.Device) ? string.Empty : $" ({metrics.Device} · {metrics.Model})";
         TimeSpan? sinceSuccess = metrics.SinceLastSuccess;
         TimeSpan? sinceFrame = metrics.SinceLastFrame;
 
         HealthCheckResult result;
         if (sinceSuccess is { } s && s <= Window)
         {
-            result = HealthCheckResult.Healthy("Inferenz erfolgreich.");
+            result = HealthCheckResult.Healthy($"Inferenz erfolgreich.{info}");
         }
         else if (sinceFrame is null || sinceFrame > Window)
         {
             // No frames arriving: the camera is the issue, not the model (unless warm-up never completed).
             result = metrics.ModelReady
-                ? HealthCheckResult.Healthy("Keine Bilder")
-                : HealthCheckResult.Degraded("Modell noch nicht bereit.");
+                ? HealthCheckResult.Healthy($"Keine Bilder{info}")
+                : HealthCheckResult.Degraded($"Modell noch nicht bereit.{info}");
         }
         else
         {
             result = HealthCheckResult.Degraded(sinceSuccess is null
-                ? "Noch keine erfolgreiche Inferenz."
-                : "Bilder werden verarbeitet, aber seit über 5 s keine erfolgreiche Inferenz.");
+                ? $"Noch keine erfolgreiche Inferenz.{info}"
+                : $"Bilder werden verarbeitet, aber seit über 5 s keine erfolgreiche Inferenz.{info}");
         }
 
         return Task.FromResult(result);

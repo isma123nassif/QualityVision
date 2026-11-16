@@ -37,6 +37,8 @@ public static class PipelineEndpoints
             lastInferenceMs = metrics.LastInferenceMs,
             framesProcessed = metrics.FramesProcessed,
             modelReady = metrics.ModelReady,
+            device = metrics.Device,
+            model = metrics.Model,
             detections,
         });
     }

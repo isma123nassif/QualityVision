@@ -13,6 +13,7 @@ using SkiaSharp;
 using YoloDotNet;
 using YoloDotNet.Enums;
 using YoloDotNet.ExecutionProvider.Cpu;
+using YoloDotNet.ExecutionProvider.Cuda;
 using YoloDotNet.Models;
 
 // Alias: inside QualityVision.Infrastructure.*, a bare "Detection" binds to the Infrastructure.Detection namespace.
@@ -21,13 +22,16 @@ using CoreDetection = QualityVision.Core.Detection.Detection;
 namespace QualityVision.Infrastructure.Detection;
 
 /// <summary>
-/// YOLO11n object detector (YoloDotNet, ONNX Runtime CPU). <b>Singleton</b>: the model is loaded once in the
-/// constructor and reused for every frame. Translates YoloDotNet results into Core <see cref="CoreDetection"/> records
-/// with normalized boxes, so no YoloDotNet type leaves Infrastructure.
+/// YOLO11 object detector (YoloDotNet, ONNX Runtime). <b>Singleton</b>: the model is loaded once in the
+/// constructor and reused for every frame. The execution provider is chosen by <see cref="DetectionOptions.Device"/>
+/// (ADR-004): yolo11m on CUDA, or yolo11n on the CPU when forced or as the automatic fallback.
+/// Translates YoloDotNet results into Core <see cref="CoreDetection"/> records with normalized boxes, so no
+/// YoloDotNet type leaves Infrastructure.
 /// </summary>
 public sealed class YoloObjectDetector : IObjectDetector, IDisposable
 {
     private const int WarmUpSize = 640;
+    private const string CpuDeviceName = "CPU";
 
     private readonly Lock _gate = new();
     private readonly IOptionsMonitor<DetectionOptions> _options;
@@ -41,19 +45,59 @@ public sealed class YoloObjectDetector : IObjectDetector, IDisposable
         _options = options;
         _logger = logger;
 
-        // The model path is read once: changing it requires a restart (the thresholds are hot-reloadable).
-        string modelPath = options.CurrentValue.ResolveModelPath();
+        // Device and model paths are read once: changing them requires a restart (the thresholds are hot-reloadable).
+        DetectionOptions current = options.CurrentValue;
+        string modelPath;
         long started = Stopwatch.GetTimestamp();
-        _yolo = new Yolo(new YoloOptions
+        switch (current.Device)
         {
-            ExecutionProvider = new CpuExecutionProvider(modelPath),
-            ImageResize = ImageResize.Proportional,
-        });
+            case DetectionDevice.Cuda:
+                // Forced GPU: a failure (no driver, CUDA 13 or cuDNN 9) propagates and stops startup.
+                modelPath = current.ResolveModelPath();
+                _yolo = LoadCuda(modelPath, current.GpuId);
+                ActiveDevice = CudaDeviceName(current.GpuId);
+                break;
 
+            case DetectionDevice.Cpu:
+                modelPath = current.ResolveCpuModelPath();
+                _yolo = LoadCpu(modelPath);
+                ActiveDevice = CpuDeviceName;
+                break;
+
+            default:
+                // Auto: prefer the GPU with the large model; any failure degrades to the small model on the CPU.
+                modelPath = current.ResolveModelPath();
+                try
+                {
+                    _yolo = LoadCuda(modelPath, current.GpuId);
+                    ActiveDevice = CudaDeviceName(current.GpuId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(
+                        "CUDA unavailable ({ExceptionType}: {Reason}); falling back to CPU. Hint: install cuDNN 9 / CUDA 13 drivers",
+                        ex.GetType().Name, ex.Message);
+                    modelPath = current.ResolveCpuModelPath();
+                    started = Stopwatch.GetTimestamp();
+                    _yolo = LoadCpu(modelPath);
+                    ActiveDevice = CpuDeviceName;
+                }
+
+                break;
+        }
+
+        ActiveModel = Path.GetFileName(modelPath);
         _logger.LogInformation(
-            "YOLO model loaded from {ModelPath} ({SizeMb:F1} MB) in {Ms:F0} ms (CPU execution provider)",
-            modelPath, new FileInfo(modelPath).Length / (1024.0 * 1024.0), Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            "YOLO model {ActiveModel} loaded on {ActiveDevice} from {ModelPath} ({SizeMb:F1} MB) in {Ms:F0} ms (requested device: {Device})",
+            ActiveModel, ActiveDevice, modelPath, new FileInfo(modelPath).Length / (1024.0 * 1024.0),
+            Stopwatch.GetElapsedTime(started).TotalMilliseconds, current.Device);
     }
+
+    /// <summary>Execution device actually in use: <c>"GPU (CUDA {GpuId})"</c> or <c>"CPU"</c>.</summary>
+    public string ActiveDevice { get; }
+
+    /// <summary>File name of the loaded model, e.g. <c>yolo11m.onnx</c>.</summary>
+    public string ActiveModel { get; }
 
     /// <inheritdoc />
     public IReadOnlyList<CoreDetection> Detect(Frame frame)
@@ -107,6 +151,24 @@ public sealed class YoloObjectDetector : IObjectDetector, IDisposable
             _yolo = null;
         }
     }
+
+    private static string CudaDeviceName(int gpuId) => $"GPU (CUDA {gpuId})";
+
+    /// <summary>
+    /// Loads the model on the CUDA execution provider. The provider constructor throws (OnnxRuntimeException)
+    /// when the driver, CUDA 13 or cuDNN 9 is missing. The first CUDA load in a process takes ~5.5 s (context init).
+    /// </summary>
+    private static Yolo LoadCuda(string modelPath, int gpuId) => new(new YoloOptions
+    {
+        ExecutionProvider = new CudaExecutionProvider(modelPath, gpuId),
+        ImageResize = ImageResize.Proportional,
+    });
+
+    private static Yolo LoadCpu(string modelPath) => new(new YoloOptions
+    {
+        ExecutionProvider = new CpuExecutionProvider(modelPath),
+        ImageResize = ImageResize.Proportional,
+    });
 
     /// <summary>Pixel box → normalized box clamped to [0,1]; null if nothing of it lies inside the frame.</summary>
     private static NormalizedRect? ToNormalized(SKRectI pixelBox, int width, int height)

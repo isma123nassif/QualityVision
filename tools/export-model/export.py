@@ -21,14 +21,15 @@
 # url = "https://download.pytorch.org/whl/cpu"
 # explicit = true
 # ///
-"""Reproducible export of YOLO11n (COCO) to ONNX for QualityVision.
+"""Reproducible export of YOLO11 (COCO) to ONNX for QualityVision.
 
-Usage (from the repository root):  uv run tools/export-model/export.py
-Result: models/yolo11n.onnx (opset 17, static input 1x3x640x640).
+Usage (from the repository root):  uv run tools/export-model/export.py [--size n|s|m]
+Result: models/yolo11{size}.onnx (opset 17, static input 1x3x640x640). Default size: n.
 """
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import shutil
 import sys
@@ -39,10 +40,9 @@ from ultralytics import YOLO
 
 OPSET = 17
 IMGSZ = 640
-WEIGHTS = "yolo11n.pt"
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-TARGET = SCRIPT_DIR.parent.parent / "models" / "yolo11n.onnx"
+MODELS_DIR = SCRIPT_DIR.parent.parent / "models"
 
 
 def dims(value_info: onnx.ValueInfoProto) -> list[int | str]:
@@ -51,8 +51,15 @@ def dims(value_info: onnx.ValueInfoProto) -> list[int | str]:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Export YOLO11 (COCO) to ONNX.")
+    parser.add_argument("--size", choices=["n", "s", "m"], default="n",
+                        help="YOLO11 variant to export (default: n)")
+    size = parser.parse_args().size
+    weights = f"yolo11{size}.pt"
+    target = MODELS_DIR / f"yolo11{size}.onnx"
+
     # 1. Load (and download if missing) the weights, cached next to this script.
-    model = YOLO(str(SCRIPT_DIR / WEIGHTS))
+    model = YOLO(str(SCRIPT_DIR / weights))
 
     # 2. Export: static shapes, simplified graph.
     exported = Path(model.export(format="onnx", opset=OPSET, dynamic=False,
@@ -77,13 +84,13 @@ def main() -> int:
         return 1
 
     # 4. Publish into models/.
-    TARGET.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(exported, TARGET)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(exported, target)
     exported.unlink()  # drop the intermediate .onnx next to the .pt
-    sha256 = hashlib.sha256(TARGET.read_bytes()).hexdigest()
+    sha256 = hashlib.sha256(target.read_bytes()).hexdigest()
 
     print("--- Export summary ---")
-    print(f"file   : {TARGET} ({TARGET.stat().st_size / 1e6:.1f} MB)")
+    print(f"file   : {target} ({target.stat().st_size / 1e6:.1f} MB)")
     print(f"sha256 : {sha256}")
     print(f"opset  : {opset}")
     print(f"input  : {inp.name} {in_shape}")

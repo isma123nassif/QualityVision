@@ -35,7 +35,9 @@ public sealed class YoloObjectDetectorIntegrationTests : IDisposable
     {
         _options = new FixedOptionsMonitor<DetectionOptions>(new DetectionOptions
         {
-            ModelPath = Path.Combine(AppContext.BaseDirectory, "models", "yolo11n.onnx"),
+            // Forced CPU keeps these tests deterministic on any machine; Auto/Cuda are covered separately.
+            Device = DetectionDevice.Cpu,
+            CpuModelPath = Path.Combine(AppContext.BaseDirectory, "models", "yolo11n.onnx"),
             Confidence = 0.45,
             Iou = 0.7,
         });
@@ -158,7 +160,8 @@ public sealed class YoloObjectDetectorIntegrationTests : IDisposable
 
         _options.CurrentValue = new DetectionOptions
         {
-            ModelPath = _options.CurrentValue.ModelPath,
+            Device = _options.CurrentValue.Device,
+            CpuModelPath = _options.CurrentValue.CpuModelPath,
             Confidence = 0.88,
             Iou = 0.7,
         };
@@ -199,7 +202,11 @@ public sealed class YoloObjectDetectorIntegrationTests : IDisposable
     [Fact]
     public void Ctor_MissingModel_Throws()
     {
-        var options = new FixedOptionsMonitor<DetectionOptions>(new DetectionOptions { ModelPath = "models/missing.onnx" });
+        var options = new FixedOptionsMonitor<DetectionOptions>(new DetectionOptions
+        {
+            Device = DetectionDevice.Cpu,
+            CpuModelPath = "models/missing.onnx",
+        });
 
         Assert.ThrowsAny<Exception>(() => new YoloObjectDetector(options, NullLogger<YoloObjectDetector>.Instance));
     }

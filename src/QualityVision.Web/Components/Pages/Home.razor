@@ -90,6 +90,11 @@
         <h2 class="panel-title">Verarbeitung</h2>
 
         <div class="tile">
+            <span class="label">Erkennung</span>
+            <span class="device-badge @(_isGpu ? "gpu" : "cpu")">@_deviceText</span>
+        </div>
+
+        <div class="tile">
             <span class="label">Verarbeitung (FPS)</span>
             <span class="value">@_procFps.ToString("0.0", De)</span>
         </div>
@@ -136,6 +141,8 @@
     private int _detectionTotal;
     private InspectionCounts _counts;
     private IReadOnlyList<InspectionEvent> _recent = [];
+    private bool _isGpu;
+    private string _deviceText = "–";
     private static readonly CultureInfo De = CultureInfo.GetCultureInfo("de-DE");
 
     protected override void OnInitialized()
@@ -173,6 +180,8 @@
         _lastError = CameraStatus.LastError;
         _procFps = Metrics.ProcessedFps;
         _inferenceMs = Metrics.InferenceMs;
+        _isGpu = Metrics.Device.StartsWith("GPU", StringComparison.Ordinal);
+        _deviceText = DeviceLabel(Metrics.Device, Metrics.Model);
         var all = Metrics.LastDetections;
         _detectionTotal = all.Count;
         // Ignored classes (e.g. person) are not shown in the list; they still count in the total.
@@ -195,6 +204,19 @@
             var ms = (long)Math.Max(0, (Clock.GetUtcNow() - last.Value).TotalMilliseconds);
             _lastFrameText = ms < 10_000 ? $"vor {ms} ms" : $"vor {ms / 1000} s";
         }
+    }
+
+    // Display-only: turns the backend strings into the short badge text, e.g. "GPU · yolo11m".
+    private static string DeviceLabel(string device, string model)
+    {
+        if (string.IsNullOrWhiteSpace(device) || string.IsNullOrWhiteSpace(model))
+        {
+            return "–";
+        }
+
+        var kind = device.StartsWith("GPU", StringComparison.Ordinal) ? "GPU" : "CPU";
+        var name = model.Replace(".onnx", string.Empty, StringComparison.OrdinalIgnoreCase);
+        return $"{kind} · {name}";
     }
 
     private static string VerdictClass(Verdict v) => v switch

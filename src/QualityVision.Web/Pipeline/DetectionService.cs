@@ -45,6 +45,8 @@ public sealed class DetectionService(
         // Return control to the host immediately: warm-up and inference are CPU-bound and must not block startup.
         await Task.Yield();
 
+        metrics.SetModelInfo(warmUpTarget.ActiveDevice, warmUpTarget.ActiveModel);
+
         try
         {
             try

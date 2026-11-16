@@ -7,7 +7,7 @@ and a German Blazor dashboard shows KPIs, a per-minute chart and a live event lo
 SQLite and exportable as CSV. It is a weekend demo for a technical interview: **robust and explainable beats clever.**
 
 Sources of truth: `docs/00-briefing/PROMPT_ORIGINAL.md` (scope), `docs/PLAN.md` (milestones, decisions),
-`docs/adr/` (architecture decisions; start with ADR-001).
+`docs/adr/` (architecture decisions; start with ADR-001; GPU/CUDA: ADR-004).
 
 ## Solution layout
 
@@ -107,5 +107,5 @@ Each task brief includes the role definition from `.claude/agents/<role>.md`.
 
 ## No over-engineering
 
-Not in scope: MediatR, CQRS, Docker, authentication, GPU, microservices, a custom object tracker,
-generic repositories. If something is not needed to make Monday's demo work and be explainable, skip it.
+Not in scope: MediatR, CQRS, Docker, authentication, microservices, a custom object tracker,
+generic repositories. (GPU is in scope since ADR-004: CUDA with automatic CPU fallback.) If something is not needed to make Monday's demo work and be explainable, skip it.
