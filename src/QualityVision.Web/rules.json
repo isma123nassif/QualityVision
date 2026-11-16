@@ -1,11 +1,20 @@
 {
   "Rules": {
     "Classes": {
+      "banana": "Ok",
       "bottle": "Ok",
+      "cable": "Ignore",
       "cell phone": "Ok",
+      "computer mouse": "Ignore",
       "cup": "Nok",
-      "scissors": "Danger",
-      "person": "Ignore"
+      "keyboard": "Ignore",
+      "laptop": "Ignore",
+      "marker pen": "Ok",
+      "notebook": "Ignore",
+      "pencil": "Ignore",
+      "person": "Ignore",
+      "reed diffuser": "Ignore",
+      "scissors": "Danger"
     }
   }
 }

@@ -37,6 +37,13 @@ public static class GermanLabels
         ["handbag"] = "Handtasche",
         ["umbrella"] = "Regenschirm",
         ["potted plant"] = "Pflanze",
+        // Open-vocabulary (YOLO-World) classes, not part of COCO.
+        ["marker pen"] = "Marker",
+        ["pencil"] = "Bleistift",
+        ["cable"] = "Kabel",
+        ["reed diffuser"] = "Duftstäbchen",
+        ["notebook"] = "Notizbuch",
+        ["computer mouse"] = "Maus",
     }.ToFrozenDictionary(StringComparer.Ordinal);
 
     /// <summary>German display name for a COCO class name; falls back to <paramref name="className"/> itself.</summary>

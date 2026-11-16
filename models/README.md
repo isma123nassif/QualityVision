@@ -18,3 +18,13 @@
 - **Format:** ONNX opset 17, input `images` 1x3x640x640, output `output0` 1x84x8400
 - **Size:** ~80.7 MB
 - **SHA256:** `SHA256: 920578a604c479245215aada98d2abfdf32c8af893d09e85dca08be2a40446b7`  (compute: `sha256sum models/yolo11m.onnx`)
+
+## yoloworld-qv.onnx
+
+- **Origin:** YOLO-World v2 L (`yolov8l-worldv2.pt`, Tencent AILab) via Ultralytics 8.4.x, with 14 fixed text classes baked in (`set_classes`), see `tools/export-model/world-classes.txt`.
+- **Use:** open-vocabulary GPU model (detects the marker pen, not a COCO class), see ADR-005.
+- **Licence:** GPL-3.0 (YOLO-World) / AGPL-3.0 (Ultralytics). See ADR-005 and ADR-003, section Licensing.
+- **Format:** ONNX, input 1x3x640x640, output 1x(4+14)x8400, class names in metadata, task `detect`
+- **Size:** 177.2 MB
+- **SHA256:** `b3528426d94f4f12faab4e5693b3d25ce972b2cdc6d5aa8c6a5854aa02063580`  (compute: `sha256sum models/yoloworld-qv.onnx`)
+- **Not committed** (exceeds GitHub's 100 MB limit, gitignored): regenerate with `tools/export-model/export.py`, world mode.

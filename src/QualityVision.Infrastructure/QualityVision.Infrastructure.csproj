@@ -39,8 +39,8 @@
 
   <ItemGroup>
     <!-- Bundled label font (DejaVu licence permits redistribution); flows to the Web/test output folders. -->
-    <None Include="Assets\Fonts\DejaVuSans-Bold.ttf" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="Assets\Fonts\DejaVu-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Assets\Fonts\DejaVuSans-Bold.ttf" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="Assets\Fonts\DejaVu-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

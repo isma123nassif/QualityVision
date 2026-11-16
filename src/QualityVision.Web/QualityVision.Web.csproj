@@ -10,8 +10,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\models\yolo11n.onnx" Link="models\yolo11n.onnx" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\..\models\yolo11m.onnx" Link="models\yolo11m.onnx" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\models\yolo11n.onnx" Link="models\yolo11n.onnx" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\models\yolo11m.onnx" Link="models\yolo11m.onnx" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\models\yoloworld-qv.onnx" Condition="Exists('..\..\models\yoloworld-qv.onnx')" Link="models\yoloworld-qv.onnx" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
@@ -19,7 +20,7 @@
          `dotnet run`), so editing src/QualityVision.Web/rules.json reloads live; the output copy is for publish.
          When published, the content root is the current working directory: start the app from the publish folder
          (or pass the contentRoot command-line argument), otherwise the required rules.json is not found. -->
-    <Content Update="rules.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Update="rules.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

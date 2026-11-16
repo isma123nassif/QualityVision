@@ -1,0 +1,14 @@
+marker pen
+bottle
+cup
+cell phone
+banana
+scissors
+person
+pencil
+cable
+reed diffuser
+notebook
+laptop
+keyboard
+computer mouse

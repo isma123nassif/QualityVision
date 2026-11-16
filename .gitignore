@@ -489,6 +489,8 @@ $RECYCLE.BIN/
 tools/**/.venv/
 *.pt
 tools/export-model/*.onnx
+# YOLO-World model: >100 MB (GitHub limit), reproducible via `uv run tools/export-model/export.py --mode world`
+models/yoloworld-qv.onnx
 spikes/**/certs/
 __pycache__/
 samples/*.local.*

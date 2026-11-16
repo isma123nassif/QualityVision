@@ -35,6 +35,12 @@ public sealed class GermanLabelsTests
     [InlineData("handbag", "Handtasche")]
     [InlineData("umbrella", "Regenschirm")]
     [InlineData("potted plant", "Pflanze")]
+    [InlineData("marker pen", "Marker")]
+    [InlineData("pencil", "Bleistift")]
+    [InlineData("cable", "Kabel")]
+    [InlineData("reed diffuser", "Duftstäbchen")]
+    [InlineData("notebook", "Notizbuch")]
+    [InlineData("computer mouse", "Maus")]
     public void Get_KnownClass_ReturnsGermanName(string className, string expected)
     {
         Assert.Equal(expected, GermanLabels.Get(className));

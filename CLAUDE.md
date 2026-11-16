@@ -1,7 +1,7 @@
 # QualityVision — project guide for Claude
 
 Industrial visual quality inspection demo in C#/.NET 10. A live camera feed is shown in the browser with an
-inspection zone ("Prüfzone"); YOLO11n (ONNX, CPU, YoloDotNet) detects objects, a configurable rules engine
+inspection zone ("Prüfzone"); YOLO-World v2 L (open-vocabulary, ONNX, CUDA, YoloDotNet; detects the marker pen, which is not a COCO class, see ADR-005; YOLO11 stays as COCO/CPU fallback) detects objects, a configurable rules engine
 assigns a verdict (OK / NOK / DANGER / UNKNOWN / IGNORE), objects are counted once when they *enter* the zone,
 and a German Blazor dashboard shows KPIs, a per-minute chart and a live event log. Events are persisted to
 SQLite and exportable as CSV. It is a weekend demo for a technical interview: **robust and explainable beats clever.**
