@@ -1,12 +1,13 @@
 # QualityVision — Projektdokumentation
 
 > **Optische Qualitätsprüfung in Echtzeit mit C#/.NET 10, ONNX und Blazor Server**
-> Technisches Referenzdokument für den Projektverantwortlichen. Es beschreibt, was gebaut wurde, warum jede
-> Entscheidung so getroffen wurde, wo die Grenzen liegen und wie man das System bei einem Industriekunden in die
-> Produktion bringen würde.
+> Technisches Referenzdokument. Es beschreibt, was gebaut wurde, warum jede Entscheidung so getroffen wurde, wo die
+> Grenzen liegen und wie sich das System in die Produktion überführen lässt.
 >
-> Stand: 16.11.2026, Commit `bf0efb1` (M1–M6 abgeschlossen). Quellen: `docs/00-briefing/PROMPT_ORIGINAL.md`,
-> `docs/PLAN.md`, `docs/adr/ADR-001…005`, `docs/reviews/`, `docs/aprendizaje/`, `docs/entrevista/HECHOS_FLUJO_IA.md` und der Code.
+> Stand: M1–M6 abgeschlossen. Quellen: `docs/00-briefing/PROMPT_ORIGINAL.md`, `docs/PLAN.md`,
+> `docs/adr/ADR-001…005`, `docs/reviews/`, `docs/aprendizaje/` und der Code.
+>
+> Weitere Sprachen: [English](../README.md) · [Español](README.es.md)
 
 ---
 
@@ -19,9 +20,9 @@
 5. [Regeln, Prüfzone und Zählung](#5-regeln-prüfzone-und-zählung)
 6. [Dashboard, Persistenz und Plan B](#6-echtzeit-dashboard-persistenz-und-plan-b)
 7. [Qualität](#7-qualität)
-8. [Wie es entstanden ist: Entwicklung mit KI-Agenten](#8-wie-es-entstanden-ist-entwicklung-mit-ki-agenten)
+8. [Entwicklungsmethode: Arbeit mit KI-Agenten](#8-entwicklungsmethode-arbeit-mit-ki-agenten)
 9. [Entscheidungen, Trade-offs und Weg in die Produktion](#9-entscheidungen-trade-offs-und-weg-in-die-produktion)
-10. [Demo-Leitfaden](#10-demo-leitfaden)
+10. [Inbetriebnahme und Ausführung](#10-inbetriebnahme-und-ausführung)
 11. [Glossar ES / DE / EN](#11-glossar-es--de--en)
 
 ---
@@ -58,9 +59,9 @@ Blackboxen, die sich nur schwer integrieren lassen.
 | Compiler-Warnungen | **0** (`TreatWarningsAsErrors`, Analyzer auf Stufe `latest`) |
 | Umfang | ~5.600 Zeilen Produktcode (C#/Razor) und ~4.500 Zeilen Tests |
 | Dokumentation | 5 ADRs, 6 Schnittstellenverträge, 7 Code-Reviews, 8 Lernnotizen |
-| Zeitrahmen | 8 Commits zwischen dem 15.11., 15:50 Uhr, und dem 16.11., 11:42 Uhr, entwickelt mit einem Team aus KI-Agenten unter ingenieurmäßiger Kontrolle (§8) |
+| Zeitrahmen | 8 Commits, entwickelt mit einem Team aus KI-Agenten unter ingenieurmäßiger Kontrolle (§8) |
 
-**Kernbotschaft für das Gespräch:** Das ist kein Bildverarbeitungsskript mit einer Weboberfläche obendrauf. Es ist eine
+**Kerneigenschaften:** Das ist kein Bildverarbeitungsskript mit einer Weboberfläche obendrauf. Es ist eine
 .NET-Anwendung mit einer **durch Tests abgesicherten Schichtenarchitektur**, mit **konstruktionsbedingt begrenztem
 Speicher und begrenzter Latenz**, mit **kontrollierter Degradation** (ohne GPU läuft sie auf der CPU weiter, eine
 fehlerhafte `rules.json` behält die vorherigen Regeln, ohne Datenbank läuft die Demo trotzdem) und mit
@@ -70,7 +71,7 @@ fehlerhafte `rules.json` behält die vorherigen Regeln, ohne Datenbank läuft di
 
 ## 2. Industrieller Anwendungsfall
 
-### 2.1 Das Problem in der Sprache des Kunden
+### 2.1 Das Problem in der Fachsprache
 
 In der deutschen Fertigung ist die **optische Prüfung** bzw. **Sichtprüfung** einer der häufigsten Qualitätsprüfpunkte:
 Nach der Montage, der Verpackung oder der Lackierung entscheidet eine Kamera, ob das Teil
@@ -91,9 +92,8 @@ Die erste Version teilte durch *alle* Detektionen. Das Code-Review zu M4 (Befund
 Qualitäts- und nicht mit einem Code-Argument: **GEFAHR ist ein Sicherheitsereignis und keine Bewertung eines Teils**,
 und **Unbekannt ist kein geprüftes Teil**. Nimmt man beide in den Nenner, „verbessert“ jedes Objekt, das durchs Bild
 läuft, die Quote künstlich. In der deutschen Praxis gilt: *Ausschussquote = n.i.O.-Teile / geprüfte Teile*. Deshalb
-sind GEFAHR und Unbekannt eigene KPIs. Genau mit dieser Begründung lässt sich das im Gespräch vertreten.
-
-### 2.3 Warum das für einen deutschen Industriekunden relevant ist
+sind GEFAHR und Unbekannt eigene KPIs.
+### 2.3 Warum das für die Fertigungsindustrie relevant ist
 
 - **Fehlerkosten:** Ein Fehler, der bis zum Endkunden durchrutscht (*Schlupf*), kostet ein Vielfaches dessen, was
   seine Erkennung in der Linie kostet. Mit automatischer Prüfung gilt in jeder Schicht dasselbe Kriterium.
@@ -102,8 +102,7 @@ sind GEFAHR und Unbekannt eigene KPIs. Genau mit dieser Begründung lässt sich 
 - **Arbeitssicherheit:** Gefährliche Gegenstände in der Zelle zu erkennen ist ein realer Anwendungsfall (vergessenes
   Werkzeug, Hände in der Zone).
 - **Integration:** Der eigentliche Mehrwert liegt nicht im Modell, sondern in der **Anbindung**: Regeln, die der
-  *Qualitätsingenieur* ohne Programmierer ändern kann, Daten für das MES und Signale an die SPS. Das ist genau die
-  Arbeit eines Fullstack-Beratungsunternehmens (siehe §9.2).
+  *Qualitätsingenieur* ohne Programmierer ändern kann, Daten für das MES und Signale an die SPS. Siehe dazu §9.2.
 
 ### 2.4 Was diese Demo ist – und was nicht
 
@@ -166,7 +165,7 @@ ohne Konfiguration und ohne Uhr testen. Und ein Wechsel von Modell, Kamera oder 
 **Ein Beispiel für diese Disziplin (ADR-002).** Das Briefing verlangte Hot Reload über `IOptionsMonitor` *und* einen
 abhängigkeitsfreien Core – beides widerspricht sich. Die Lösung: Core definiert den Port
 `IRuleSetProvider { RuleSet Current }` und bekommt einen **unveränderlichen Snapshot** `RuleSet`. Nur der Adapter
-`OptionsRuleSetProvider` in der Infrastructure kennt `IOptionsMonitor`. Der Satz fürs Gespräch: *„Das Domänenmodell
+`OptionsRuleSetProvider` in der Infrastructure kennt `IOptionsMonitor`. Kurz gesagt: *„Das Domänenmodell
 bekommt einen Snapshot; nur der Adapter weiß, woher er kommt.“*
 
 ### 3.2 Die Pipeline
@@ -300,7 +299,7 @@ Minuten auf. Die Maßnahmen:
 
 **Warum kein Python-Microservice (FastAPI + ultralytics)?** Das bedeutet eine zweite Laufzeitumgebung, einen
 Netzwerk-Hop pro Frame, doppelten Deployment-Aufwand und doppelt so viele Fehlerquellen. ONNX im .NET-Prozess ist
-schnell genug und hält die Lösung in einem einzigen Stack – genau das, was ein .NET-Kunde sucht.
+schnell genug und hält die Lösung in einem einzigen Stack.
 
 ### 4.2 GPU mit CUDA und automatischer Rückfall auf die CPU (ADR-004)
 
@@ -319,9 +318,9 @@ Gemessen auf dem Demo-PC (RTX 5070 Ti, ONNX Runtime 1.32.0, Opset 17, Eingang 64
   („install cuDNN 9 / CUDA 13“), und `CpuModelPath` (YOLO11n) wird auf der CPU geladen.
 - `Cuda`: Schlägt es fehl, scheitert der Start (*Fail Fast*). `Cpu`: erzwingt die CPU.
 - `ActiveDevice` und `ActiveModel` erscheinen im Log, unter `/api/pipeline/metrics`, unter `/health` und als **Badge
-  im Dashboard**: Das Publikum sieht, was gerade läuft.
+  im Dashboard**: Man sieht sofort, was gerade läuft.
 
-**Der Packaging-Bug (eine gute Geschichte fürs Gespräch).** Das CPU- und das GPU-Paket von ONNX Runtime bringen jeweils
+**Der Packaging-Bug.** Das CPU- und das GPU-Paket von ONNX Runtime bringen jeweils
 eine native Bibliothek mit **demselben Namen** mit (`libonnxruntime.so`). Die CPU-Version (34,8 MB) landete über eine
 transitive Abhängigkeit im Ausgabeverzeichnis und **überschrieb stillschweigend** die GPU-Version (38,1 MB) – CUDA wurde
 also nicht geladen. Die Lösung ist `ExcludeAssets="native;runtime"` am CPU-Paket. **Das nicht offensichtliche Detail:
@@ -360,7 +359,7 @@ Aktuelle Klassen (die Reihenfolge ist wichtig; Quelle: `tools/export-model/world
 | `Ignore` (wird weder gezählt noch gezeichnet) | person, pencil, cable, reed diffuser, notebook, laptop, keyboard, computer mouse |
 | `Unknown` (grau) | jede Klasse ohne Regel (fester *Fallback* des `RuleSet`) |
 
-### 4.4 Bekannte Grenzen (ansprechen, bevor danach gefragt wird)
+### 4.4 Bekannte Grenzen
 
 - **Der CPU-Fallback (YOLO11n, COCO) erkennt den Textmarker nicht.** Flasche, Tasse, Schere und Handy schon. Das ist in
   ADR-005 dokumentiert.
@@ -371,7 +370,7 @@ Aktuelle Klassen (die Reihenfolge ist wichtig; Quelle: `tools/export-model/world
 - **Keine kontrollierte Beleuchtung und keine Industrieoptik:** In einer echten Linie sind Licht und Kamera genauso
   wichtig wie das Modell.
 
-### 4.5 Lizenzen (in einem Beratungsunternehmen eine wahrscheinliche Frage)
+### 4.5 Lizenzen
 
 | Komponente | Lizenz | Konsequenz |
 |---|---|---|
@@ -511,7 +510,7 @@ stateDiagram-v2
 
 ### 6.1 Blazor Server: Der Circuit ist bereits SignalR
 
-Das Briefing verlangte einen eigenen SignalR-Hub. **Die endgültige Entscheidung (PLAN.md, 16.11.) war, keinen zu
+Das Briefing verlangte einen eigenen SignalR-Hub. **Die endgültige Entscheidung (PLAN.md) war, keinen zu
 bauen.** In Blazor Server (Interactive Server) hält jeder Browser-Tab einen **Circuit**, und der *ist bereits* eine
 SignalR-Verbindung. Die Komponente abonniert `IInspectionLog.EventAdded` und ruft `InvokeAsync(StateHasChanged)` auf.
 Blazor berechnet den DOM-*Diff* und schickt nur die Änderungen.
@@ -539,7 +538,7 @@ Details der Umsetzung:
   Fehler steht im Log).
 - **Live-Video:** `<img src="/stream">` mit MJPEG (`multipart/x-mixed-replace`). WebRTC wurde verworfen: Es braucht
   Signalisierung und einen JS-Stack, und MJPEG reicht im LAN völlig aus. Boxen und deutsche Beschriftungen (Schrift
-  DejaVu, kräftige Strichstärke) werden serverseitig gezeichnet und bleiben auch nach der Kompression von Google Meet
+  DejaVu, kräftige Strichstärke) werden serverseitig gezeichnet und bleiben auch bei stark komprimiertem Video
   lesbar.
 
 ### 6.2 Alarm
@@ -548,7 +547,7 @@ Details der Umsetzung:
   Gefahrenalarm.
 - **Ton über die Web Audio API**, ganz ohne Audiodateien: NOK sind 2 Pieptöne mit 880 Hz, GEFAHR 3 Pieptöne mit 600 Hz,
   ohne Überlappung. Browser blockieren Audio bis zur ersten Benutzerinteraktion – deshalb gibt es den Button
-  **„Ton an“**, der vor der Demo gedrückt werden muss.
+  **„Ton an“**, der vor Beginn gedrückt werden muss.
 
 ### 6.3 Persistenz: EF Core + SQLite
 
@@ -587,12 +586,12 @@ Details der Umsetzung:
 
 ### 6.5 Plan B: aufgezeichnetes Video
 
-Die Kamera ist der empfindlichste Teil einer Remote-Demo (WLAN, Handy-Akku, Zertifikat). Die Abstraktion
+Die Kamera ist die störanfälligste Komponente (WLAN, Handy-Akku, Zertifikat). Die Abstraktion
 `IFrameSource` (Strategy-Muster) macht den Plan B zu **einem Konfigurationswert**:
 
 | `Camera:Source` | Implementierung | Einsatz |
 |---|---|---|
-| `Phone` (Standard) | `PhoneFrameSource`: Die Seite `/kamera` in Safari auf dem iPhone sendet JPEGs über HTTPS | Hauptkamera. Gegenüber DroidCam wegen der **geringeren Latenz** gewählt (Entscheidung des Projektverantwortlichen) |
+| `Phone` (Standard) | `PhoneFrameSource`: Die Seite `/kamera` in Safari auf dem iPhone sendet JPEGs über HTTPS | Hauptkamera. Gegenüber DroidCam wegen der **geringeren Latenz** gewählt (Entscheidung des Entwicklers) |
 | `Url` | `OpenCvFrameSource` + FFmpeg (DroidCam MJPEG, RTSP) | Alternative |
 | `Webcam` | `OpenCvFrameSource`, V4L2-Index | Lokale USB-Kamera |
 | `VideoFile` | `OpenCvFrameSource`, in Schleife und im FPS-Takt der Datei | **Plan B** |
@@ -623,7 +622,7 @@ Die Kamera ist der empfindlichste Teil einer Remote-Demo (WLAN, Handy-Akku, Zert
 | 3 | Sauberes Format | `dotnet format --verify-no-changes` + `.editorconfig` |
 | 4 | Review ohne BLOCKER | Bericht des Agenten `code-reviewer` in `docs/reviews/MX-review.md` |
 | 5 | Echte Funktionsprüfung | curl, Screenshots mit Playwright/Chromium, Sichtung der annotierten MJPEG-Frames |
-| 6 | Lernnotiz | `docs/aprendizaje/MX.md` (auf Spanisch, mit 3 Interviewfragen) |
+| 6 | Lernnotiz | `docs/aprendizaje/MX.md` (auf Spanisch, mit Kontrollfragen) |
 | 7 | Commit | Conventional Commits, einer pro Meilenstein |
 | 8 | **Haltepunkt** | Der verantwortliche Mensch gibt das OK, bevor der nächste Meilenstein beginnt |
 
@@ -644,10 +643,10 @@ Logging mit Message-Templates statt String-Interpolation).
 
 | Meilenstein | Befund | Auswirkung ohne Korrektur |
 |---|---|---|
-| M2 | `/stream` ignorierte das Herunterfahren des Hosts | Strg+C dauerte 30 s: Im Gespräch hätte es so ausgesehen, als hänge die App |
+| M2 | `/stream` ignorierte das Herunterfahren des Hosts | Strg+C dauerte 30 s: Die App wirkt, als hänge sie |
 | M2 | *Decompression Bomb* bei `POST /api/camera/frame`: Ein JPEG unter 2 MB kann 2^30 px deklarieren | Rund 3 GB pro Request: Der Prozess stürzt wegen Speichermangels ab |
 | M2 | URL ohne Timeout geöffnet | Jeder Wiederverbindungsversuch dauerte rund 30 s |
-| M3 | Ein Inferenzfehler ließ den Stream einfrieren | Das Bild wäre vor den Augen des Gesprächspartners stehen geblieben |
+| M3 | Ein Inferenzfehler ließ den Stream einfrieren | Das Bild wäre stehen geblieben |
 | M4 | Neuladen mit leerer oder fehlender `rules.json` löschte alle Regeln | Personen in der Zone wären als „Unbekannt“ gezählt worden |
 | M4 | Definition der Ausschussquote | Falscher KPI nach deutscher Qualitätspraxis |
 | M4b | Die native CPU-Bibliothek von ONNX Runtime überschrieb die GPU-Bibliothek | CUDA wurde nicht geladen, die App lief unbemerkt auf der CPU |
@@ -666,7 +665,7 @@ Angemessene Maßnahmen:
 
 - **Netzwerk:** Host-Firewall, die Port 5080 nur von der IP des Laptops und Port 5443 nur von der des iPhones zulässt;
   niemals in einem öffentlichen Netz; die App wird nach der Demo beendet.
-- **Umgebung `Production`:** keine Developer-Exception-Page und keine *Stack Traces* vor dem Gesprächspartner.
+- **Umgebung `Production`:** keine Developer-Exception-Page und keine *Stack Traces* für Benutzer.
 - **Gehärteter Frame-Endpunkt** (§3.6).
 - **Regeleditor**, der in einen festen Pfad schreibt – mit Validierung und atomarem Schreiben.
 - **Neutralisierter CSV-Export.**
@@ -674,24 +673,23 @@ Angemessene Maßnahmen:
 
 ---
 
-## 8. Wie es entstanden ist: Entwicklung mit KI-Agenten
+## 8. Entwicklungsmethode: Arbeit mit KI-Agenten
 
-> Maßgebliche Quelle: `docs/entrevista/HECHOS_FLUJO_IA.md`. Dieser Abschnitt ist Gesprächsmaterial: Die Botschaft lautet
-> **kontrolliertes Engineering mit KI**, nicht „die KI hat das gemacht“.
+> Dieser Abschnitt beschreibt die Methode: **kontrolliertes Engineering mit KI**, nicht „die KI hat das gemacht“.
 
-### 8.1 Ehrlicher Rahmen
+### 8.1 Rahmen
 
 Die KI wurde eingesetzt wie **ein Team aus Junior-Entwicklern und Spezialisten**, das schnell arbeitet, aber präzise
-Vorgaben, Reviews und Verifikation braucht. **Die technische Verantwortung liegt beim Ingenieur**: Umfang festlegen,
+Vorgaben, Reviews und Verifikation braucht. **Die technische Verantwortung liegt beim Entwickler**: Umfang festlegen,
 jeden Meilenstein freigeben, Systemberechtigungen erteilen und entscheiden. Jede Zeile ist durch automatische Gates,
 ein unabhängiges Review und eine echte Funktionsprüfung abgedeckt. Und alles ist so dokumentiert, dass der
-Projektverantwortliche es erklären kann (die Lernnotizen sind Teil der *Definition of Done*).
+Entwickler es nachvollziehen und erklären kann (die Lernnotizen sind Teil der *Definition of Done*).
 
 ### 8.2 Rollen
 
 ```mermaid
 flowchart TB
-    H["Ingenieur (Mensch)<br/>Umfang · OK pro Meilenstein · Berechtigungen · Produktentscheidungen"]
+    H["Entwickler (Mensch)<br/>Umfang · OK pro Meilenstein · Berechtigungen · Produktentscheidungen"]
     O["Orchestrator<br/>Claude Code, Hauptsitzung (Claude Opus)<br/>plant · schreibt Verträge · startet Agenten · integriert<br/>führt ALLE Builds/Tests/Format-Checks aus · prüft E2E · git"]
     H <--> O
     O --> A[architect]
@@ -705,7 +703,7 @@ flowchart TB
 
 | Rolle | Verantwortung | Einschränkung |
 |---|---|---|
-| **Ingenieur (Mensch)** | Umfang, Freigabe jedes Meilensteins (**verpflichtender Haltepunkt**), Systemberechtigungen, Produktentscheidungen | — |
+| **Entwickler (Mensch)** | Umfang, Freigabe jedes Meilensteins (**verpflichtender Haltepunkt**), Systemberechtigungen, Produktentscheidungen | — |
 | **Orchestrator** | Plan, Verträge, Delegation, Integration, Gates, Live-Verifikation, git, Projektgedächtnis | **Schreibt keinen Produktcode** (globale Regel): delegiert |
 | `architect` | Struktur, Verträge zwischen den Schichten, ADRs | Implementiert nicht |
 | `backend-dev` | Pipeline, DI, *Hosted Services*, EF Core, Endpunkte | Fasst die UI nicht an |
@@ -713,7 +711,7 @@ flowchart TB
 | `frontend-dev` | Blazor, Dashboard, UX auf Deutsch | Schreibt keine Domänenlogik |
 | `qa-engineer` | xUnit-Tests und Verifikation | Schreibt keinen Produktcode |
 | `code-reviewer` | Review mit Befunden BLOCKER / MAJOR / MINOR | **Nur Lesezugriff**: darf ausschließlich `docs/reviews/MX-review.md` anlegen |
-| `tech-writer` | README, Lernnotizen, Interview-Kit | Schreibt keinen Code |
+| `tech-writer` | README, Lernnotizen, Projektdokumentation | Schreibt keinen Code |
 
 Jede Rolle ist in `.claude/agents/<rolle>.md` definiert, und jeder Auftrag enthält diese Definition plus die konkrete
 Aufgabe. **Die Agenten dürfen `dotnet` nicht ausführen**: Alle Builds, Tests und Format-Prüfungen laufen über den
@@ -742,7 +740,7 @@ flowchart LR
 ### 8.4 Sichtbare Agenten und Modellwahl
 
 - **Sichtbarkeit:** Jeder Agent läuft in **einem eigenen Konsole-Fenster** (Skripte `lanzar-claude.sh` und
-  `run-claude.sh`), das ein KWin-Skript auf dem virtuellen Desktop „Desarrollo“ platziert – so **sieht der Ingenieur
+  `run-claude.sh`), das ein KWin-Skript auf dem virtuellen Desktop „Desarrollo“ platziert – so **sieht der Entwickler
   jeden Agenten bei der Arbeit**. Der Exit-Code wird in `<name>.exit` geschrieben; der Orchestrator wartet darauf und
   schließt anschließend das Fenster.
 - **Modell je nach Aufgabe** (Kosten gegenüber Leistungsfähigkeit):
@@ -756,9 +754,9 @@ flowchart LR
 - **Hintergrund:** Ursprünglich war OpenCode mit DeepSeek v4 Pro geplant. Dessen Kontingent war aufgebraucht, und die
   Agenten liefen danach als Claude-CLI-Sitzungen. **Insgesamt gab es 67 Agentenaufträge.**
 
-### 8.5 Mensch in der Schleife: was der Ingenieur entschieden hat
+### 8.5 Mensch in der Schleife: was der Entwickler entschieden hat
 
-| Entscheidung des Ingenieurs | Wirkung |
+| Entscheidung des Entwicklers | Wirkung |
 |---|---|
 | Umfang und vollständiges Briefing festgelegt | Maßgebliche Quelle (`PROMPT_ORIGINAL.md`) |
 | Jeden Meilenstein nach dem Haltepunkt freigegeben | Kein Meilenstein ging ohne OK weiter |
@@ -771,7 +769,7 @@ flowchart LR
 **Was die KI gemacht hat:** Plan, Verträge und ADRs verfassen, implementieren, Tests schreiben, reviewen, verifizieren
 und dokumentieren – immer innerhalb der oben genannten Grenzen.
 
-### 8.6 Vorfälle und Lehren (ehrliches Material, das Kontrolle belegt)
+### 8.6 Vorfälle und Lehren
 
 | Vorfall | Lehre bzw. neue Regel |
 |---|---|
@@ -788,14 +786,14 @@ Textmarker (Schwelle senken hilft nicht; YOLO-World lieferte live 0,86–0,97; d
 
 ### 8.7 Zeitlicher Ablauf
 
-| Tag | Arbeit |
+| Phase | Arbeit |
 |---|---|
-| 14.11. | M0: Umgebung (Installation des .NET-10-SDK; `uv` und Python 3.12 nur für den Modellexport) |
-| 15.11. | M1 (*Scaffold*, Agenten, ADR-001), M2 (Erfassung, MJPEG, iPhone-Seite), M3 (YOLO11 und Boxen), M4 (Regeln, Zone, Entprellung, Hot Reload) |
-| 16.11., vormittags | M4b (GPU), M5 (Dashboard, Alarm, Editor), YOLO-World und `run-demo.sh`, M6 (SQLite, CSV, Aufzeichnung) |
+| 1 | M0: Umgebung (Installation des .NET-10-SDK; `uv` und Python 3.12 nur für den Modellexport) |
+| 2 | M1 (*Scaffold*, Agenten, ADR-001), M2 (Erfassung, MJPEG, iPhone-Seite), M3 (YOLO11 und Boxen), M4 (Regeln, Zone, Entprellung, Hot Reload) |
+| 3 | M4b (GPU), M5 (Dashboard, Alarm, Editor), YOLO-World und `run-demo.sh`, M6 (SQLite, CSV, Aufzeichnung) |
 
 **Offen aus dem ursprünglichen Plan:** M7 (Feinschliff: Serilog, Kamera-Health-Check, README, 10-Minuten-Probelauf) und
-M8 (Interview-Kit auf Deutsch).
+M8 (Projektdokumentation).
 
 ---
 
@@ -827,7 +825,7 @@ M8 (Interview-Kit auf Deutsch).
 | Kein Docker | Container | Kamera- und GPU-Zugriff aus dem Container bringen Risiko ohne Nutzen auf einem einzelnen Rechner |
 | Injizierter `TimeProvider` | `DateTime.Now` | Deterministische Tests ohne *Sleeps* |
 
-### 9.2 Was ich in der Produktion anders machen würde
+### 9.2 Roadmap zur Produktion
 
 ```mermaid
 flowchart LR
@@ -859,9 +857,9 @@ flowchart LR
 
 ---
 
-## 10. Demo-Leitfaden
+## 10. Inbetriebnahme und Ausführung
 
-### 10.1 Vorbereitung (vor dem Call)
+### 10.1 Vorbereitung
 
 1. **Plan-B-Video aufzeichnen (offen: `samples/demo.mp4` existiert noch nicht).** Bei funktionierender Kamera:
    ```bash
@@ -874,7 +872,7 @@ flowchart LR
 2. **Modell prüfen:** `models/yoloworld-qv.onnx` (177 MB, nicht in git, reproduzierbar mit
    `tools/export-model/export.py`). Ohne diese Datei kann `Auto` das GPU-Modell nicht laden und fällt auf YOLO11n auf
    der CPU zurück, das **den Textmarker nicht erkennt**.
-3. **Die App mindestens 2–3 Minuten vorher starten** (das erste Laden mit CUDA dauert rund 5,5 s, dazu kommt das
+3. **Die App starten und warten, bis sie bereit ist** (das erste Laden mit CUDA dauert rund 5,5 s, dazu kommt das
    *Warm-up*):
    ```bash
    ./run-demo.sh            # publish Release + Production
@@ -882,10 +880,9 @@ flowchart LR
    ```
    Das Skript prüft die GPU (`nvidia-smi`) und ob die Ports 5080 und 5443 frei sind, kopiert
    `appsettings.Local.json` (den HTTPS-Endpunkt für das iPhone) und gibt die URLs aus.
-4. **iPhone:** `https://<IP-PC>:5443/kamera` in Safari öffnen (selbstsigniertes Zertifikat, bereits akzeptiert), die
+4. **iPhone:** `https://<PC-IP>:5443/kamera` in Safari öffnen (selbstsigniertes Zertifikat, bereits akzeptiert), die
    Kamera erlauben und das Handy fest mit Blick auf den Tisch aufstellen.
-5. **Laptop:** Chrome mit `http://<IP-PC>:5080`, das **GPU-Badge** prüfen, **„Ton an“** drücken und in Google Meet
-   **den Tab** teilen (bessere Qualität als den ganzen Bildschirm).
+5. **Laptop:** Chrome mit `http://<PC-IP>:5080`, das **GPU-Badge** prüfen und **„Ton an“** drücken.
 6. **Firewall:** Ports auf die IPs von Laptop und iPhone beschränkt.
 
 ### 10.2 URLs
@@ -900,9 +897,9 @@ flowchart LR
 | `http://<IP>:5080/api/inspection/export.csv` | CSV-Export (heute; optional `?from=…&to=…`) |
 | `https://<IP>:5443/kamera` | Erfassungsseite für das iPhone |
 
-### 10.3 Ablauf: was in welcher Reihenfolge gezeigt wird (rund 10 Minuten)
+### 10.3 Beispielablauf zur Funktionsprüfung (rund 10 Minuten)
 
-| # | Schritt | Was man sagt (sinngemäß) |
+| # | Schritt | Technischer Hintergrund |
 |---|---|---|
 | 1 | Dashboard im Ruhezustand: Video, Prüfzone, GPU-*Badge*, FPS und Inferenz | „Eine .NET-10-Anwendung; YOLO als ONNX auf der GPU, rund 10 ms pro Bild; fällt die GPU aus, läuft sie automatisch auf der CPU weiter“ |
 | 2 | **Textmarker** in die Zone legen → grün, i.O. +1, Ereignis | „Gezählt wird beim *Eintritt*, nicht pro Frame: Entprellung über Abwesenheits-Frames“ |
@@ -914,7 +911,7 @@ flowchart LR
 | 8 | Minutendiagramm und **CSV exportieren** → Datei öffnen | `;`, Dezimalkomma, BOM für Excel, Schutz gegen Formel-Injection |
 | 9 | (Optional) `/health` und `/api/pipeline/metrics` | Betriebsfähigkeit |
 | 10 | Code: Schichtenarchitektur, `ArchitectureTests`, der `Channel` in `Program.cs` und `ZoneEntryTracker` | „Die Abhängigkeitsregel wird durch einen Test geprüft“ |
-| 11 | Wie es entstanden ist (§8) und was ich in der Produktion machen würde (§9.2) | Kontrolliertes Engineering mit KI; OPC UA/MQTT, *Fine-Tuning*, Rollen, *Betriebsrat* |
+| 11 | Entwicklungsmethode (§8) und Roadmap zur Produktion (§9.2) | Kontrolliertes Engineering mit KI; OPC UA/MQTT, *Fine-Tuning*, Rollen, *Betriebsrat* |
 
 **Nach Schritt 7 `cup → Nok` wiederherstellen.**
 
@@ -923,18 +920,17 @@ flowchart LR
 | Symptom | Wahrscheinliche Ursache | Maßnahme |
 |---|---|---|
 | „Getrennt“ / kein Bild vom iPhone | WLAN, gesperrter Bildschirm, Safari im Hintergrund | `/kamera` auf dem iPhone neu laden. Ist es nach 30 s nicht wieder da → **Plan B**: Strg+C und `./run-demo.sh --no-build --video` |
-| *Badge* „CPU“ statt GPU | Treiber, CUDA oder cuDNN fehlt, oder `yoloworld-qv.onnx` fehlt | Warnung im Log ansehen („CUDA unavailable…“). Auf der CPU funktionieren Flasche, Tasse, Schere und Handy, aber nicht der Textmarker: die Flasche als i.O.-Teil verwenden und den *Fallback* als Designentscheidung erklären |
-| Textmarker wird nicht erkannt | Licht, Winkel, zu weit weg | Näher heranhalten, drehen, Licht verbessern. Erklären, dass der professionelle Weg das *Fine-Tuning* ist |
-| Doppelte Zählung | Flackern länger als N Frames | `Inspection:AbsenceFrames` erhöhen (zum Beispiel auf 10) und den FPS-abhängigen Trade-off erklären |
+| *Badge* „CPU“ statt GPU | Treiber, CUDA oder cuDNN fehlt, oder `yoloworld-qv.onnx` fehlt | Warnung im Log ansehen („CUDA unavailable…“). Auf der CPU funktionieren Flasche, Tasse, Schere und Handy, aber nicht der Textmarker: die Flasche als i.O.-Teil verwenden; der *Fallback* ist eine Designentscheidung (ADR-004) |
+| Textmarker wird nicht erkannt | Licht, Winkel, zu weit weg | Näher heranhalten, drehen, Licht verbessern. Der professionelle Weg ist das *Fine-Tuning* (§4.6) |
+| Doppelte Zählung | Flackern länger als N Frames | `Inspection:AbsenceFrames` erhöhen (zum Beispiel auf 10) (FPS-abhängiger Trade-off, siehe §5.3) |
 | Kein Ton | „Ton an“ nicht gedrückt (*Autoplay*-Richtlinie des Browsers) | „Ton an“ drücken |
 | `run-demo.sh`: „port 5080 already in use“ | Eine andere Instanz läuft noch | Sie (per PID) beenden und neu starten |
 | `--video`: „demo.mp4 not found“ | Video nicht aufgezeichnet | Vorher aufzeichnen (§10.1) |
 | Fehlerseite im Browser | Exception (in Production wird kein *Stack Trace* angezeigt) | Log im Terminal ansehen; Seite neu laden |
 | Zähler mit alten Daten | Die heutigen Daten werden aus SQLite vorgeladen | Gewollt (übersteht Neustarts). Für einen Neustart bei null: App beenden und `artifacts/demo/data/qualityvision.db` löschen |
 
-**Goldene Regel:** Wenn live etwas schiefgeht, ruhig ansprechen und zum Gesprächsthema machen („genau dafür gibt es den
-*Fallback*“; „genau deshalb ist der Plan B ein Konfigurationswert“). Kontrollierte Degradation ist selbst schon ein
-Beweis für gutes Engineering.
+**Hinweis:** Kontrollierte Degradation ist Teil des Designs: Dafür gibt es den *Fallback* auf die CPU, und deshalb ist
+der Plan B ein Konfigurationswert.
 
 ---
 

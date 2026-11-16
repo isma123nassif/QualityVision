@@ -4,11 +4,11 @@ Real-time industrial visual quality inspection in C#/.NET 10: a live camera feed
 
 A camera image is shown in the browser with an inspection zone (*Prüfzone*). Objects are detected, judged by a rules engine (OK / NOK / DANGER / UNKNOWN / IGNORE) and counted once when they **enter** the zone. The dashboard shows KPIs, a per-minute chart and a live event log. Events are stored in SQLite and can be exported as CSV.
 
-It is a weekend demo built for a technical interview, so the design goal is **robust and explainable over clever**.
+The design goal is **robust and explainable over clever**: simple, testable components with trade-offs recorded as ADRs.
 
 ## Features
 
-- Live camera sources: iPhone browser page (HTTPS upload), MJPEG URL, local webcam, or a looping video file (Plan B).
+- Live camera sources: iPhone browser page (HTTPS upload), MJPEG URL, local webcam, or a looping video file (fallback).
 - Automatic fallback to the recorded video if the live source is lost.
 - Object detection with YOLO-World v2 (open vocabulary, detects objects that are not COCO classes) or YOLO11 (COCO).
 - CUDA acceleration with automatic CPU fallback (`Detection:Device = Auto`).
@@ -66,7 +66,7 @@ Measured on an RTX 5070 Ti (inference time per frame, 640×640 input):
 
 Live with the full app (YOLO11m on CUDA): about 6.3 ms inference, 20 FPS output, about 890 MB VRAM. See [ADR-004](docs/adr/ADR-004-gpu-acceleration.md).
 
-## Getting started
+## Setup and running
 
 ### Prerequisites
 
@@ -105,7 +105,7 @@ Browsers only allow camera capture on secure origins, so the phone page `/kamera
 
 ```bash
 ./run-demo.sh            # publish + run in the Production environment
-./run-demo.sh --video    # Plan B: loop samples/demo.mp4 (see samples/README.md)
+./run-demo.sh --video    # fallback: loop samples/demo.mp4 (see samples/README.md)
 ./run-demo.sh --no-build # reuse the previous publish output
 ```
 
@@ -123,7 +123,7 @@ The app is LAN-only and has no authentication by design; restrict the ports with
 |---|---|
 | `rules.json` | Class → verdict map (`Ok`, `Nok`, `Danger`, `Ignore`; unknown classes → UNKNOWN). Hot-reloaded; the `/regeln` editor writes only this file. Distractor classes are mapped to `Ignore`. |
 | `Detection` | `Device` (`Auto`/`Cuda`/`Cpu`), `GpuId`, `ModelPath`, `CpuModelPath`, `Confidence` (0.45), `Iou`. |
-| `Camera` | `Source` = `Phone` \| `Url` \| `Webcam` \| `VideoFile`, plus `Url`, `WebcamIndex`, `VideoFile`, requested size and `MaxFps`. Set `Camera__RecordTo` to record the raw feed for Plan B. |
+| `Camera` | `Source` = `Phone` \| `Url` \| `Webcam` \| `VideoFile`, plus `Url`, `WebcamIndex`, `VideoFile`, requested size and `MaxFps`. Set `Camera__RecordTo` to record the raw feed as a fallback. |
 | `Inspection` | Normalised `Zone` rectangle and `AbsenceFrames` (debounce, in frames). |
 
 All settings are in `src/QualityVision.Web/appsettings.json` and can be overridden with environment variables (e.g. `Camera__Source=VideoFile`).
@@ -142,16 +142,22 @@ plus a code review without blockers, a real functional check, and a learning not
 
 ## How it was built
 
-The project was developed by a team of AI agents (architect, backend, vision, frontend, QA, code reviewer, tech writer) coordinated by an orchestrator session, with a human approving each milestone. Work was split into contracts, run in parallel, then integrated and verified by the orchestrator. Reviews caught real bugs before the demo. Details: [`docs/entrevista/WORKFLOW_DE.md`](docs/entrevista/WORKFLOW_DE.md) and [`docs/entrevista/HECHOS_FLUJO_IA.md`](docs/entrevista/HECHOS_FLUJO_IA.md).
+The project was developed by a team of AI agents (architect, backend, vision, frontend, QA, code reviewer, tech writer) coordinated by an orchestrator session, with the developer approving each milestone. Work was split into contracts, run in parallel, then integrated and verified by the orchestrator. Independent reviews caught real bugs before release. Details: the development-method sections of [`docs/README.de.md`](docs/README.de.md) (German) and [`docs/README.es.md`](docs/README.es.md) (Spanish).
 
 ## Documentation
 
 - [Architecture decision records](docs/adr/README.md) (ADR-001 to ADR-005)
 - [Project plan](docs/PLAN.md) (Spanish)
 - Learning notes per milestone (Spanish): [`docs/aprendizaje/`](docs/aprendizaje/)
-- Project document: [`PROYECTO_ES.md`](docs/entrevista/PROYECTO_ES.md) (Spanish), [`PROYECTO_DE.md`](docs/entrevista/PROYECTO_DE.md) (German)
-- Interview kit (German): [`PITCH_DE.md`](docs/entrevista/PITCH_DE.md), [`DEMO_DE.md`](docs/entrevista/DEMO_DE.md), [`FRAGEN_DE.md`](docs/entrevista/FRAGEN_DE.md), [`WORKFLOW_DE.md`](docs/entrevista/WORKFLOW_DE.md)
+- Full project documentation: [`docs/README.es.md`](docs/README.es.md) (Spanish), [`docs/README.de.md`](docs/README.de.md) (German)
+
+## Roadmap to production
+
+- Add authentication/authorisation and TLS termination (the app is LAN-only by design, see ADR-001).
+- Resolve model licensing for commercial use (see Licensing).
+- Fine-tune a detector on the manufacturer's own parts instead of relying on open vocabulary.
+- Integrate with plant systems (PLC/MES) to act on NOK / DANGER verdicts.
 
 ## Licensing
 
-There is no licence file in this repository yet. Third-party terms to be aware of: YOLO11 code and weights are **AGPL-3.0**, YOLO-World is **GPL-3.0**, and YoloDotNet is **MIT**. Fine for a demo; a commercial product would need to resolve this. See [ADR-003](docs/adr/ADR-003-object-detection-model.md) and [ADR-005](docs/adr/ADR-005-open-vocabulary-model.md).
+There is no licence file in this repository yet. Third-party terms to be aware of: YOLO11 code and weights are **AGPL-3.0**, YOLO-World is **GPL-3.0**, and YoloDotNet is **MIT**. Fine for evaluation and research; a commercial product would need to resolve this. See [ADR-003](docs/adr/ADR-003-object-detection-model.md) and [ADR-005](docs/adr/ADR-005-open-vocabulary-model.md).
