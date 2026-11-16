@@ -64,7 +64,7 @@ Measured on an RTX 5070 Ti (inference time per frame, 640×640 input):
 | YOLO11m | 198 ms | 6.4–6.9 ms |
 | YOLO-World v2 L | – | ~10 ms |
 
-Live with the full app (YOLO11m on CUDA): about 6.3 ms inference, 20 FPS output, about 890 MB VRAM. See [ADR-004](docs/adr/ADR-004-gpu-acceleration.md).
+Live with the full app (YOLO11m on CUDA): about 6.3 ms inference, 20 FPS output, about 890 MB VRAM. CUDA is used when available, with automatic CPU fallback (ADR-004).
 
 ## Setup and running
 
@@ -147,8 +147,6 @@ The project was developed by a team of AI agents (architect, backend, vision, fr
 ## Documentation
 
 - [Architecture decision records](docs/adr/README.md) (ADR-001 to ADR-005)
-- [Project plan](docs/PLAN.md) (Spanish)
-- Learning notes per milestone (Spanish): [`docs/aprendizaje/`](docs/aprendizaje/)
 - Full project documentation: [`docs/README.es.md`](docs/README.es.md) (Spanish), [`docs/README.de.md`](docs/README.de.md) (German)
 
 ## Roadmap to production
@@ -160,4 +158,4 @@ The project was developed by a team of AI agents (architect, backend, vision, fr
 
 ## Licensing
 
-There is no licence file in this repository yet. Third-party terms to be aware of: YOLO11 code and weights are **AGPL-3.0**, YOLO-World is **GPL-3.0**, and YoloDotNet is **MIT**. Fine for evaluation and research; a commercial product would need to resolve this. See [ADR-003](docs/adr/ADR-003-object-detection-model.md) and [ADR-005](docs/adr/ADR-005-open-vocabulary-model.md).
+There is no licence file in this repository yet. Third-party terms to be aware of: YOLO11 code and weights are **AGPL-3.0**, YOLO-World is **GPL-3.0**, and YoloDotNet is **MIT**. Fine for evaluation and research; a commercial product would need to resolve this. The model choices are YOLO11 (ADR-003) and YOLO-World v2 for the marker pen (ADR-005).

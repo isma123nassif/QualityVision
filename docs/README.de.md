@@ -4,8 +4,8 @@
 > Technisches Referenzdokument. Es beschreibt, was gebaut wurde, warum jede Entscheidung so getroffen wurde, wo die
 > Grenzen liegen und wie sich das System in die Produktion überführen lässt.
 >
-> Stand: M1–M6 abgeschlossen. Quellen: `docs/00-briefing/PROMPT_ORIGINAL.md`, `docs/PLAN.md`,
-> `docs/adr/ADR-001…005`, `docs/reviews/`, `docs/aprendizaje/` und der Code.
+> Stand: M1–M6 abgeschlossen. Quellen: ursprüngliches Briefing, Projektplan,
+> ADR-001…005, Code-Reviews und der Code.
 >
 > Weitere Sprachen: [English](../README.md) · [Español](README.es.md)
 
@@ -510,7 +510,7 @@ stateDiagram-v2
 
 ### 6.1 Blazor Server: Der Circuit ist bereits SignalR
 
-Das Briefing verlangte einen eigenen SignalR-Hub. **Die endgültige Entscheidung (PLAN.md) war, keinen zu
+Das Briefing verlangte einen eigenen SignalR-Hub. **Die endgültige Entscheidung (Projektplan) war, keinen zu
 bauen.** In Blazor Server (Interactive Server) hält jeder Browser-Tab einen **Circuit**, und der *ist bereits* eine
 SignalR-Verbindung. Die Komponente abonniert `IInspectionLog.EventAdded` und ruft `InvokeAsync(StateHasChanged)` auf.
 Blazor berechnet den DOM-*Diff* und schickt nur die Änderungen.
@@ -620,14 +620,14 @@ Die Kamera ist die störanfälligste Komponente (WLAN, Handy-Akku, Zertifikat). 
 | 1 | 0 Warnungen, 0 Fehler | `dotnet build -warnaserror` (`TreatWarningsAsErrors`, `Nullable`, `AnalysisLevel latest`, `EnforceCodeStyleInBuild`, IDE0005 für überflüssige `using`s) |
 | 2 | Tests grün | `dotnet test` (xUnit) |
 | 3 | Sauberes Format | `dotnet format --verify-no-changes` + `.editorconfig` |
-| 4 | Review ohne BLOCKER | Bericht des Agenten `code-reviewer` in `docs/reviews/MX-review.md` |
+| 4 | Review ohne BLOCKER | Bericht des Agenten `code-reviewer` |
 | 5 | Echte Funktionsprüfung | curl, Screenshots mit Playwright/Chromium, Sichtung der annotierten MJPEG-Frames |
-| 6 | Lernnotiz | `docs/aprendizaje/MX.md` (auf Spanisch, mit Kontrollfragen) |
+| 6 | Lernnotiz | pro Meilenstein, auf Spanisch, mit Kontrollfragen |
 | 7 | Commit | Conventional Commits, einer pro Meilenstein |
 | 8 | **Haltepunkt** | Der verantwortliche Mensch gibt das OK, bevor der nächste Meilenstein beginnt |
 
 Zusätzlich: **Central Package Management** (`Directory.Packages.props`, keine Versionen in den `.csproj`-Dateien),
-`global.json` zum Fixieren des SDK und Konventionen in `CLAUDE.md` (Englisch im Code, Deutsch in der UI, strukturiertes
+`global.json` zum Fixieren des SDK und Projektkonventionen (Englisch im Code, Deutsch in der UI, strukturiertes
 Logging mit Message-Templates statt String-Interpolation).
 
 ### 7.2 417 Tests: was sie abdecken
@@ -710,7 +710,7 @@ flowchart TB
 | `vision-engineer` | Kamera, ONNX, Detektion, Performance, *Disposal* | Fasst die UI nicht an |
 | `frontend-dev` | Blazor, Dashboard, UX auf Deutsch | Schreibt keine Domänenlogik |
 | `qa-engineer` | xUnit-Tests und Verifikation | Schreibt keinen Produktcode |
-| `code-reviewer` | Review mit Befunden BLOCKER / MAJOR / MINOR | **Nur Lesezugriff**: darf ausschließlich `docs/reviews/MX-review.md` anlegen |
+| `code-reviewer` | Review mit Befunden BLOCKER / MAJOR / MINOR | **Nur Lesezugriff**: darf ausschließlich seinen Review-Bericht anlegen |
 | `tech-writer` | README, Lernnotizen, Projektdokumentation | Schreibt keinen Code |
 
 Jede Rolle ist in `.claude/agents/<rolle>.md` definiert, und jeder Auftrag enthält diese Definition plus die konkrete
@@ -721,11 +721,11 @@ Orchestrator. Kein Agent kann also etwas als „grün“ melden, das es nicht is
 
 ```mermaid
 flowchart LR
-    C["1 · Vertrag<br/>docs/contracts/MX-contract.md<br/>exakte Signaturen · Ownership · erlaubte Dateien"] --> P["2 · Agenten parallel<br/>backend ║ frontend ║ vision ║ architect"]
+    C["1 · Vertrag<br/>exakte Signaturen · Ownership · erlaubte Dateien"] --> P["2 · Agenten parallel<br/>backend ║ frontend ║ vision ║ architect"]
     P --> I["3 · Integration<br/>build -warnaserror · test · format"]
     I --> QA["4 · QA + Review (Opus)<br/>Fix-Agent: MAJORs + günstige MINORs"]
     QA --> E["5 · E2E-Verifikation<br/>curl · Playwright · Frames"]
-    E --> L["6 · Lernnotiz<br/>docs/aprendizaje/MX.md"]
+    E --> L["6 · Lernnotiz"]
     L --> G["7 · Commit<br/>Conventional Commits"]
     G --> S["8 · HALTEPUNKT<br/>OK vom Menschen"]
 ```

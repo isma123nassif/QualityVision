@@ -4,8 +4,8 @@
 > Documentación técnica de referencia. Explica qué se construyó, por qué cada decisión es la que es, qué límites
 > tiene y cómo se llevaría a producción en un entorno industrial.
 >
-> Estado: commit `bf0efb1` (M1–M6 cerrados). Fuentes: `docs/00-briefing/PROMPT_ORIGINAL.md`,
-> `docs/PLAN.md`, `docs/adr/ADR-001…005`, `docs/reviews/`, `docs/aprendizaje/` y el código.
+> Estado: commit `bf0efb1` (M1–M6 cerrados). Fuentes: briefing original, plan del proyecto,
+> ADR-001…005, *code reviews* y el código.
 >
 > Otras versiones: [English](../README.md) · [Deutsch](README.de.md)
 
@@ -490,7 +490,7 @@ stateDiagram-v2
 
 ### 6.1 Blazor Server: el circuito ya es SignalR
 
-El briefing pedía un hub SignalR propio. **La decisión final (PLAN.md) fue no crearlo.** En Blazor Server
+El briefing pedía un hub SignalR propio. **La decisión final (plan del proyecto) fue no crearlo.** En Blazor Server
 (Interactive Server) cada pestaña del navegador mantiene un **circuito**, que *ya es* una conexión SignalR. El
 componente se suscribe a `IInspectionLog.EventAdded` y llama a `InvokeAsync(StateHasChanged)`. Blazor calcula el *diff*
 del DOM y envía solo los cambios.
@@ -594,14 +594,14 @@ La cámara es la parte más frágil de una instalación (Wi-Fi, batería del mó
 | 1 | 0 warnings, 0 errores | `dotnet build -warnaserror` (`TreatWarningsAsErrors`, `Nullable`, `AnalysisLevel latest`, `EnforceCodeStyleInBuild`, IDE0005 para `using` sobrantes) |
 | 2 | Tests en verde | `dotnet test` (xUnit) |
 | 3 | Formato limpio | `dotnet format --verify-no-changes` + `.editorconfig` |
-| 4 | Review sin BLOCKER | Informe del agente `code-reviewer` en `docs/reviews/MX-review.md` |
+| 4 | Review sin BLOCKER | Informe del agente `code-reviewer` |
 | 5 | Verificación funcional real | curl, capturas con Playwright/Chromium, inspección de los fotogramas MJPEG anotados |
-| 6 | Nota de aprendizaje | `docs/aprendizaje/MX.md` (en español, con preguntas de repaso) |
+| 6 | Nota de aprendizaje | una por milestone, en español, con preguntas de repaso |
 | 7 | Commit | Conventional Commits, uno por milestone |
 | 8 | **Parada** | El desarrollador da el OK antes del siguiente milestone |
 
 Además: **Central Package Management** (`Directory.Packages.props`, ninguna versión en los `.csproj`), `global.json`
-que fija el SDK, y convenciones en `CLAUDE.md` (inglés en el código, alemán en la UI, logging estructurado con
+que fija el SDK, y convenciones del proyecto (inglés en el código, alemán en la UI, logging estructurado con
 plantillas y no con interpolación).
 
 ### 7.2 417 tests: qué cubren
@@ -684,7 +684,7 @@ flowchart TB
 | `vision-engineer` | Cámara, ONNX, detección, rendimiento, *disposal* | No toca la UI |
 | `frontend-dev` | Blazor, dashboard, UX en alemán | No escribe lógica de dominio |
 | `qa-engineer` | Tests xUnit y verificación | No escribe código de producto |
-| `code-reviewer` | Review con hallazgos BLOCKER / MAJOR / MINOR | **Solo lectura**: únicamente puede crear `docs/reviews/MX-review.md` |
+| `code-reviewer` | Review con hallazgos BLOCKER / MAJOR / MINOR | **Solo lectura**: únicamente puede crear su informe de review |
 | `tech-writer` | README, notas de aprendizaje, documentación | No escribe código |
 
 Cada rol está definido en `.claude/agents/<rol>.md`, y cada encargo incluye esa definición más la tarea concreta.
@@ -695,11 +695,11 @@ así que ningún agente puede declarar "en verde" algo que no lo está.
 
 ```mermaid
 flowchart LR
-    C["1 · Contrato<br/>docs/contracts/MX-contract.md<br/>firmas exactas · ownership · archivos permitidos"] --> P["2 · Agentes en paralelo<br/>backend ║ frontend ║ vision ║ architect"]
+    C["1 · Contrato<br/>firmas exactas · ownership · archivos permitidos"] --> P["2 · Agentes en paralelo<br/>backend ║ frontend ║ vision ║ architect"]
     P --> I["3 · Integración<br/>build -warnaserror · test · format"]
     I --> QA["4 · QA + review (Opus)<br/>agente de fix: MAJORs + MINORs baratos"]
     QA --> E["5 · Verificación E2E<br/>curl · Playwright · fotogramas"]
-    E --> L["6 · Nota de aprendizaje<br/>docs/aprendizaje/MX.md"]
+    E --> L["6 · Nota de aprendizaje"]
     L --> G["7 · Commit<br/>Conventional Commits"]
     G --> S["8 · PARADA<br/>OK del humano"]
 ```
