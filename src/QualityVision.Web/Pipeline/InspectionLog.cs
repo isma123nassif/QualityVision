@@ -23,6 +23,17 @@ public interface IInspectionLog
     /// <summary>Counters since app start (M6 will load them from the database).</summary>
     InspectionCounts Counts { get; }
 
+    /// <summary>
+    /// Counts per verdict for each of the last <paramref name="minutes"/> wall-clock minutes (oldest first, includes the
+    /// current minute, empty minutes included with zero counts).
+    /// </summary>
+    /// <remarks>
+    /// Bounded by the 500-entry ring buffer: above roughly 33 events/min, older minutes of a 15-minute window show
+    /// too few events. Acceptable for the demo; persistence (M6, SQLite) is the natural fix.
+    /// </remarks>
+    /// <param name="minutes">Number of minutes in the window.</param>
+    IReadOnlyList<MinuteBucket> PerMinute(int minutes = 15);
+
     /// <summary>Raised after an event was added (for M5 SignalR); invoked outside the internal lock.</summary>
     event Action<InspectionEvent>? EventAdded;
 }
@@ -44,6 +55,14 @@ public readonly record struct InspectionCounts(int Ok, int Nok, int Danger, int 
     public double ScrapRate => Ok + Nok == 0 ? 0 : (double)Nok / (Ok + Nok);
 }
 
+/// <summary>Counts per verdict within one wall-clock minute.</summary>
+/// <param name="Minute">Start of the minute (UTC).</param>
+/// <param name="Ok">Good parts (i.O.).</param>
+/// <param name="Nok">Defective parts (n.i.O.).</param>
+/// <param name="Danger">Dangerous objects.</param>
+/// <param name="Unknown">Objects without a rule.</param>
+public readonly record struct MinuteBucket(DateTimeOffset Minute, int Ok, int Nok, int Danger, int Unknown);
+
 /// <summary>Thread-safe singleton: written by <see cref="DetectionService"/>, read by the UI and endpoints.</summary>
 public sealed class InspectionLog : IInspectionLog
 {
@@ -51,6 +70,7 @@ public sealed class InspectionLog : IInspectionLog
     public const int Capacity = 500;
 
     private readonly ILogger<InspectionLog> _logger;
+    private readonly TimeProvider _time;
     private readonly Lock _gate = new();
     private readonly InspectionEvent[] _buffer = new InspectionEvent[Capacity];
     private int _next;   // index the next event is written to
@@ -59,8 +79,10 @@ public sealed class InspectionLog : IInspectionLog
 
     /// <summary>Creates the log.</summary>
     /// <param name="logger">Logger for failing subscribers (optional; defaults to no logging).</param>
-    public InspectionLog(ILogger<InspectionLog>? logger = null)
+    /// <param name="time">Clock for <see cref="PerMinute"/> (optional; defaults to the system clock).</param>
+    public InspectionLog(ILogger<InspectionLog>? logger = null, TimeProvider? time = null)
     {
+        _time = time ?? TimeProvider.System;
         _logger = logger ?? NullLogger<InspectionLog>.Instance;
     }
 
@@ -132,6 +154,64 @@ public sealed class InspectionLog : IInspectionLog
         {
             return RecentLocked(max);
         }
+    }
+
+    public IReadOnlyList<MinuteBucket> PerMinute(int minutes = 15)
+    {
+        int n = Math.Max(minutes, 0);
+        long nowTicks = _time.GetUtcNow().UtcTicks;
+        nowTicks -= nowTicks % TimeSpan.TicksPerMinute;
+        long firstTicks = nowTicks - ((n - 1L) * TimeSpan.TicksPerMinute);
+        var ok = new int[n];
+        var nok = new int[n];
+        var danger = new int[n];
+        var unknown = new int[n];
+
+        lock (_gate)
+        {
+            for (int i = 0; i < _count; i++)
+            {
+                InspectionEvent e = _buffer[(_next - 1 - i + Capacity) % Capacity];
+                long ticks = e.Timestamp.UtcTicks;
+                long minuteTicks = ticks - (ticks % TimeSpan.TicksPerMinute);
+                if (minuteTicks < firstTicks || minuteTicks > nowTicks)
+                {
+                    continue;
+                }
+
+                int idx = (int)((minuteTicks - firstTicks) / TimeSpan.TicksPerMinute);
+                switch (e.Verdict)
+                {
+                    case Verdict.Ok:
+                        ok[idx]++;
+                        break;
+                    case Verdict.Nok:
+                        nok[idx]++;
+                        break;
+                    case Verdict.Danger:
+                        danger[idx]++;
+                        break;
+                    case Verdict.Unknown:
+                        unknown[idx]++;
+                        break;
+                    default:
+                        break;
+                }
+            }
+        }
+
+        var result = new MinuteBucket[n];
+        for (int i = 0; i < n; i++)
+        {
+            result[i] = new MinuteBucket(
+                new DateTimeOffset(firstTicks + (i * TimeSpan.TicksPerMinute), TimeSpan.Zero),
+                ok[i],
+                nok[i],
+                danger[i],
+                unknown[i]);
+        }
+
+        return result;
     }
 
     private InspectionEvent[] RecentLocked(int max)

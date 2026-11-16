@@ -71,6 +71,7 @@ builder.Services.AddSingleton<IPipelineMetrics>(static sp => sp.GetRequiredServi
 builder.Services.AddSingleton<FrameBroadcaster>();
 builder.Services.AddSingleton<IInspectionLog, InspectionLog>();
 builder.Services.AddSingleton<FrameUploadGate>();
+builder.Services.AddSingleton<RulesFileService>();
 builder.Services.AddHostedService<CameraService>();
 builder.Services.AddHostedService<DetectionService>();
 

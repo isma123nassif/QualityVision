@@ -15,7 +15,7 @@ Sources of truth: `docs/00-briefing/PROMPT_ORIGINAL.md` (scope), `docs/PLAN.md` 
 |---|---|---|
 | `src/QualityVision.Core` | Domain: `Frame`, `Detection`, `Verdict`, `RuleSet`, `RulesEngine`, `InspectionZone`, `ZoneEntryTracker`, ports (`IFrameSource`, `IObjectDetector`, `IRuleSetProvider`) | **nothing** (zero NuGet packages) |
 | `src/QualityVision.Infrastructure` | Frame sources (`OpenCvFrameSource`, `PhoneFrameSource`), YoloDotNet detector, `OptionsRuleSetProvider` (the only `IOptionsMonitor` user), EF Core + SQLite | Core |
-| `src/QualityVision.Web` | Blazor Server (Interactive Server), SignalR `InspectionHub`, `/stream` MJPEG, minimal API endpoints, hosted services wiring | Infrastructure, Core |
+| `src/QualityVision.Web` | Blazor Server (Interactive Server), dashboard (live push over the Blazor circuit), rules editor `/regeln`, `/stream` MJPEG, minimal API endpoints, hosted services wiring | Infrastructure, Core |
 | `tests/QualityVision.Tests` | xUnit unit tests + ArchitectureTests | Core, Infrastructure |
 
 **Dependency rule:** Web → Infrastructure → Core. Core has zero package dependencies and never knows that
@@ -29,7 +29,7 @@ IFrameSource: OpenCvFrameSource (Url | Webcam | VideoFile) | PhoneFrameSource (P
   → CameraService (BackgroundService) → Channel<Frame> (cap 2, DropOldest, dispose dropped)
   → DetectionService (YOLO singleton) → RulesEngine + ZoneEntryTracker (Core)
   → FrameBroadcaster (latest annotated JPEG, encoded once) → GET /stream
-  → SignalR InspectionHub (~4 Hz) → dashboard
+  → IInspectionLog.EventAdded → Blazor components push via InvokeAsync(StateHasChanged) (circuit = SignalR; no own hub, PLAN.md 16-nov)
   → Channel<InspectionEvent> → EventPersistenceService → SQLite
 ```
 
@@ -100,7 +100,7 @@ Each task brief includes the role definition from `.claude/agents/<role>.md`.
 | architect | `.claude/agents/architect.md` | Structure, layer contracts, ADRs |
 | backend-dev | `.claude/agents/backend-dev.md` | Pipeline, DI, hosted services, EF Core, endpoints |
 | vision-engineer | `.claude/agents/vision-engineer.md` | Frame sources, ONNX model, detection, performance |
-| frontend-dev | `.claude/agents/frontend-dev.md` | Blazor UI, dashboard, SignalR client, German UX |
+| frontend-dev | `.claude/agents/frontend-dev.md` | Blazor UI, dashboard, live push over the Blazor circuit, German UX |
 | qa-engineer | `.claude/agents/qa-engineer.md` | xUnit tests, verification |
 | code-reviewer | `.claude/agents/code-reviewer.md` | Review report; read-only except it may create **only** `docs/reviews/MX-review.md` |
 | tech-writer | `.claude/agents/tech-writer.md` | README, learning notes, interview kit |

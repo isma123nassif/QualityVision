@@ -4,18 +4,41 @@
 @using QualityVision.Core.Inspection
 @using QualityVision.Core.Rules
 @using QualityVision.Web.Pipeline
-@implements IDisposable
+@implements IAsyncDisposable
 @inject ICameraStatus CameraStatus
 @inject IPipelineMetrics Metrics
 @inject IInspectionLog InspectionLog
 @inject TimeProvider Clock
+@inject IJSRuntime JS
+@inject ILogger<Home> Logger
 
 <PageTitle>QualityVision – Prüfstation</PageTitle>
 
-<header class="app-header">
-    <h1>QualityVision</h1>
-    <p class="subtitle">KI-gestützte Qualitätsprüfung in Echtzeit</p>
-</header>
+@if (_alarm is not null)
+{
+    <div class="alarm-banner @(_alarm.Verdict == Verdict.Danger ? "danger" : "nok")" role="alert" @key="_alarmVersion">
+        @AlarmText(_alarm)
+    </div>
+}
+
+<section class="kpi-bar" aria-label="Kennzahlen">
+    <div class="counters" aria-label="Zähler">
+        <div class="counter ok"><span class="label">i.O.</span><span class="value">@_counts.Ok</span></div>
+        <div class="counter nok"><span class="label">n.i.O.</span><span class="value">@_counts.Nok</span></div>
+        <div class="counter danger"><span class="label">Gefahr</span><span class="value">@_counts.Danger</span></div>
+        <div class="counter unknown"><span class="label">Unbekannt</span><span class="value">@_counts.Unknown</span></div>
+        <div class="counter rate" title="n.i.O. / (i.O. + n.i.O.)"><span class="label">Ausschussquote</span><span class="value">@((_counts.ScrapRate * 100).ToString("0.0", De)) %</span><span class="sub">n.i.O. / (i.O. + n.i.O.)</span></div>
+        <div class="counter metric"><span class="label">FPS</span><span class="value">@_procFps.ToString("0.0", De)</span></div>
+        <div class="counter metric"><span class="label">Inferenz ms</span><span class="value">@_inferenceMs.ToString("0.0", De)</span></div>
+        <div class="counter metric">
+            <span class="label">Erkennung</span>
+            <span class="device-badge @(_isGpu ? "gpu" : "cpu")">@_deviceText</span>
+        </div>
+    </div>
+    <button type="button" class="sound-toggle @(_soundOn ? "on" : "off")" @onclick="ToggleSoundAsync" aria-pressed="@(_soundOn ? "true" : "false")">
+        @(_soundOn ? "🔔 Ton an" : "🔕 Ton aus")
+    </button>
+</section>
 
 <main class="dash">
     <section class="live" aria-label="Livebild">
@@ -23,25 +46,20 @@
             <img src="/stream" alt="Livebild der Prüfstation" />
         </div>
 
-        <div class="counters" aria-label="Zähler">
-            <div class="counter ok"><span class="label">i.O.</span><span class="value">@_counts.Ok</span></div>
-            <div class="counter nok"><span class="label">n.i.O.</span><span class="value">@_counts.Nok</span></div>
-            <div class="counter danger"><span class="label">Gefahr</span><span class="value">@_counts.Danger</span></div>
-            <div class="counter unknown"><span class="label">Unbekannt</span><span class="value">@_counts.Unknown</span></div>
-            <div class="counter rate"><span class="label">Ausschussquote</span><span class="value">@((_counts.ScrapRate * 100).ToString("0.0", De)) %</span><span class="sub">n.i.O. / (i.O. + n.i.O.)</span></div>
-        </div>
+        <h2 class="panel-title">Prüfungen pro Minute</h2>
+        <PerMinuteChart Buckets="_buckets" />
 
-        <h2 class="panel-title">Letzte Prüfungen</h2>
+        <h2 class="panel-title">Ereignisprotokoll</h2>
         @if (_recent.Count == 0)
         {
             <p class="muted recent-empty">Noch keine Prüfungen</p>
         }
         else
         {
-            <ul class="recent-list">
+            <ul class="recent-list event-log">
                 @foreach (var e in _recent)
                 {
-                    <li>
+                    <li @key="e.Sequence" class="@(IsFresh(e) ? "fresh" : null)">
                         <span class="recent-time">@e.Timestamp.ToLocalTime().ToString("HH:mm:ss", De)</span>
                         <span class="recent-name">@e.DisplayName</span>
                         <span class="verdict @VerdictClass(e.Verdict)">@VerdictLabels.Get(e.Verdict)</span>
@@ -90,21 +108,6 @@
         <h2 class="panel-title">Verarbeitung</h2>
 
         <div class="tile">
-            <span class="label">Erkennung</span>
-            <span class="device-badge @(_isGpu ? "gpu" : "cpu")">@_deviceText</span>
-        </div>
-
-        <div class="tile">
-            <span class="label">Verarbeitung (FPS)</span>
-            <span class="value">@_procFps.ToString("0.0", De)</span>
-        </div>
-
-        <div class="tile">
-            <span class="label">Inferenz (ms)</span>
-            <span class="value">@_inferenceMs.ToString("0.0", De)</span>
-        </div>
-
-        <div class="tile">
             <span class="label">Erkannt</span>
             <span class="value">@_detectionTotal</span>
         </div>
@@ -129,7 +132,26 @@
 </main>
 
 @code {
+    private const int LogSize = 50;
+    private const int ChartMinutes = 15;
+    private const int ChartRefreshTicks = 10; // metrics timer ticks (1 s) between chart refreshes: the window slides
+    private static readonly TimeSpan AlarmDuration = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan FreshDuration = TimeSpan.FromSeconds(3);
+    // Events are coalesced: at most one UI refresh per 250 ms (~4 Hz), however many objects enter at once.
+    private static readonly TimeSpan EventFlushDelay = TimeSpan.FromMilliseconds(250);
+    private static readonly CultureInfo De = CultureInfo.GetCultureInfo("de-DE");
+
     private readonly CancellationTokenSource _cts = new();
+    private readonly Lock _pendingGate = new();
+    private InspectionEvent? _pendingAlarm; // guarded by _pendingGate
+    private int _flushScheduled;            // 0/1, Interlocked
+    private volatile bool _disposed;
+
+    private IJSObjectReference? _alarmModule;
+    private bool _soundOn;
+    private InspectionEvent? _alarm;
+    private int _alarmVersion;
+
     private string _sourceName = "–";
     private bool _connected;
     private double _fps;
@@ -141,25 +163,235 @@
     private int _detectionTotal;
     private InspectionCounts _counts;
     private IReadOnlyList<InspectionEvent> _recent = [];
+    private IReadOnlyList<MinuteBucket> _buckets = [];
     private bool _isGpu;
     private string _deviceText = "–";
-    private static readonly CultureInfo De = CultureInfo.GetCultureInfo("de-DE");
 
     protected override void OnInitialized()
     {
-        Refresh();
-        _ = PollAsync(_cts.Token);
+        RefreshMetrics();
+        RefreshEvents();
+        InspectionLog.EventAdded += OnEventAdded;
+        _ = PollMetricsAsync(_cts.Token);
     }
 
-    private async Task PollAsync(CancellationToken ct)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            _alarmModule = await JS.InvokeAsync<IJSObjectReference>("import", _cts.Token, "./js/alarm.js");
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit gone before the module loaded.
+        }
+        catch (OperationCanceledException)
+        {
+            // Component disposed.
+        }
+        catch (ObjectDisposedException)
+        {
+            // Component disposed before the first render completed.
+        }
+        catch (JSException ex)
+        {
+            Logger.LogWarning(ex, "Alarm sound module could not be loaded");
+        }
+    }
+
+    // Raised on the detection thread, outside InspectionLog's lock. Must never throw.
+    private void OnEventAdded(InspectionEvent e)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (e.Verdict is Verdict.Nok or Verdict.Danger)
+        {
+            lock (_pendingGate)
+            {
+                // Danger outranks Nok within one flush window.
+                if (_pendingAlarm is null || e.Verdict == Verdict.Danger || _pendingAlarm.Verdict != Verdict.Danger)
+                {
+                    _pendingAlarm = e;
+                }
+            }
+        }
+
+        if (Interlocked.CompareExchange(ref _flushScheduled, 1, 0) == 0)
+        {
+            _ = FlushSoonAsync();
+        }
+    }
+
+    private async Task FlushSoonAsync()
+    {
+        try
+        {
+            await Task.Delay(EventFlushDelay, Clock, _cts.Token);
+            Interlocked.Exchange(ref _flushScheduled, 0);
+            await InvokeAsync(FlushAsync);
+        }
+        catch (OperationCanceledException)
+        {
+            // Component disposed.
+        }
+        catch (ObjectDisposedException)
+        {
+            // Circuit or token source gone.
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Dashboard event refresh failed");
+        }
+    }
+
+    // Runs on the renderer's sync context.
+    private async Task FlushAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        InspectionEvent? alarm;
+        lock (_pendingGate)
+        {
+            alarm = _pendingAlarm;
+            _pendingAlarm = null;
+        }
+
+        RefreshEvents();
+        if (alarm is not null && (_alarm is null || alarm.Verdict == Verdict.Danger || _alarm.Verdict != Verdict.Danger))
+        {
+            ShowAlarm(alarm);
+        }
+
+        StateHasChanged();
+
+        if (alarm is not null)
+        {
+            await BeepAsync(alarm.Verdict == Verdict.Danger ? "danger" : "nok");
+        }
+    }
+
+    private void ShowAlarm(InspectionEvent e)
+    {
+        _alarm = e;
+        int version = ++_alarmVersion;
+        _ = HideAlarmLaterAsync(version);
+    }
+
+    private async Task HideAlarmLaterAsync(int version)
+    {
+        try
+        {
+            await Task.Delay(AlarmDuration, Clock, _cts.Token);
+            await InvokeAsync(() =>
+            {
+                if (version == _alarmVersion && !_disposed)
+                {
+                    _alarm = null;
+                    StateHasChanged();
+                }
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            // Component disposed.
+        }
+        catch (ObjectDisposedException)
+        {
+            // Circuit or token source gone.
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Hiding the alarm banner failed");
+        }
+    }
+
+    private async Task BeepAsync(string kind)
+    {
+        if (!_soundOn || _alarmModule is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _alarmModule.InvokeVoidAsync("beep", kind);
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit gone.
+        }
+        catch (JSException ex)
+        {
+            Logger.LogDebug(ex, "Alarm beep failed");
+        }
+    }
+
+    private async Task ToggleSoundAsync()
+    {
+        if (_alarmModule is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (_soundOn)
+            {
+                await _alarmModule.InvokeVoidAsync("disable");
+                _soundOn = false;
+            }
+            else
+            {
+                // Called from the click: the page has a user gesture, so the AudioContext may start.
+                _soundOn = await _alarmModule.InvokeAsync<bool>("enable");
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit gone.
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
+        {
+            // JS interop timeout or circuit gone; must not escape the click handler.
+            _soundOn = false;
+        }
+        catch (JSException ex)
+        {
+            Logger.LogWarning(ex, "Toggling the alarm sound failed");
+            _soundOn = false;
+        }
+    }
+
+    private async Task PollMetricsAsync(CancellationToken ct)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1), Clock);
+        int ticks = 0;
         try
         {
             while (await timer.WaitForNextTickAsync(ct))
             {
-                Refresh();
-                await InvokeAsync(StateHasChanged);
+                bool refreshChart = ++ticks % ChartRefreshTicks == 0;
+                await InvokeAsync(() =>
+                {
+                    RefreshMetrics();
+                    if (refreshChart)
+                    {
+                        _buckets = InspectionLog.PerMinute(ChartMinutes);
+                    }
+
+                    StateHasChanged();
+                });
             }
         }
         catch (OperationCanceledException)
@@ -170,9 +402,19 @@
         {
             // Circuit gone; nothing to update.
         }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Dashboard metrics polling stopped unexpectedly");
+        }
     }
 
-    private void Refresh()
+    private void RefreshEvents()
+    {
+        (_counts, _recent) = InspectionLog.Snapshot(LogSize);
+        _buckets = InspectionLog.PerMinute(ChartMinutes);
+    }
+
+    private void RefreshMetrics()
     {
         _sourceName = CameraStatus.SourceName;
         _connected = CameraStatus.IsConnected;
@@ -191,9 +433,6 @@
             .Take(8)
             .ToList();
 
-        _counts = InspectionLog.Counts;
-        _recent = InspectionLog.Recent(10);
-
         var last = CameraStatus.LastFrameAt;
         if (last is null)
         {
@@ -205,6 +444,13 @@
             _lastFrameText = ms < 10_000 ? $"vor {ms} ms" : $"vor {ms / 1000} s";
         }
     }
+
+    // New log entries carry the "fresh" class for a few seconds; the CSS animation plays once on insertion.
+    private bool IsFresh(InspectionEvent e) => Clock.GetUtcNow() - e.Timestamp < FreshDuration;
+
+    private static string AlarmText(InspectionEvent e) => e.Verdict == Verdict.Danger
+        ? $"GEFAHR – {e.DisplayName} erkannt"
+        : $"ALARM: n.i.O. – {e.DisplayName} erkannt";
 
     // Display-only: turns the backend strings into the short badge text, e.g. "GPU · yolo11m".
     private static string DeviceLabel(string device, string model)
@@ -228,9 +474,23 @@
         _ => "unknown",
     };
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
+        _disposed = true;
+        InspectionLog.EventAdded -= OnEventAdded;
         _cts.Cancel();
         _cts.Dispose();
+
+        if (_alarmModule is not null)
+        {
+            try
+            {
+                await _alarmModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Circuit already gone; nothing to release on the client.
+            }
+        }
     }
 }

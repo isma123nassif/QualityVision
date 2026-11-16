@@ -1,0 +1,244 @@
+@page "/regeln"
+@using QualityVision.Core.Detection
+@using QualityVision.Core.Inspection
+@using QualityVision.Core.Rules
+@using QualityVision.Web.Pipeline
+@implements IDisposable
+@inject RulesFileService RulesFile
+@inject IRuleSetProvider RuleSetProvider
+@inject TimeProvider Clock
+@inject ILogger<Regeln> Logger
+
+<PageTitle>QualityVision – Regeln</PageTitle>
+
+<main class="rules-page">
+    <div class="rules-head">
+        <h2 class="panel-title">Prüfregeln</h2>
+        <span class="active-rules" title="Aktuell von der Prüfstation verwendete Regeln">Aktiv: @_active.Count @(_active.Count == 1 ? "Klasse" : "Klassen")</span>
+    </div>
+    <p class="muted rules-hint">Nicht aufgeführte Klassen werden als <strong>Unbekannt</strong> gewertet. Änderungen werden ohne Neustart übernommen.</p>
+
+    <table class="rules-table">
+        <thead>
+            <tr>
+                <th>Klasse (COCO)</th>
+                <th>Bezeichnung</th>
+                <th>Bewertung</th>
+                <th>Aktiv</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (RuleRow row in _rows)
+            {
+                <tr @key="row">
+                    <td class="rule-class">@row.ClassName</td>
+                    <td>@GermanLabels.Get(row.ClassName)</td>
+                    <td>
+                        <select @bind="row.Verdict" aria-label="Bewertung für @row.ClassName">
+                            @foreach (Verdict v in OptionsFor(row.Verdict))
+                            {
+                                <option value="@v">@VerdictLabels.Get(v)</option>
+                            }
+                        </select>
+                    </td>
+                    <td>@ActiveLabel(row.ClassName)</td>
+                    <td><button type="button" class="btn btn-danger" @onclick="() => Remove(row)">Löschen</button></td>
+                </tr>
+            }
+            <tr class="rule-add">
+                <td colspan="2">
+                    <input list="coco-classes" @bind="_newClass" @bind:event="oninput" placeholder="Klasse, z. B. cup" aria-label="Neue Klasse" />
+                    <datalist id="coco-classes">
+                        @foreach (string c in CommonClasses)
+                        {
+                            <option value="@c">@GermanLabels.Get(c)</option>
+                        }
+                    </datalist>
+                </td>
+                <td>
+                    <select @bind="_newVerdict" aria-label="Bewertung der neuen Klasse">
+                        @foreach (Verdict v in EditableVerdicts)
+                        {
+                            <option value="@v">@VerdictLabels.Get(v)</option>
+                        }
+                    </select>
+                </td>
+                <td colspan="2"><button type="button" class="btn" @onclick="Add">Regel hinzufügen</button></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="rules-actions">
+        <button type="button" class="btn btn-primary" @onclick="SaveAsync" disabled="@_saving">Speichern</button>
+        <button type="button" class="btn" @onclick="Load" disabled="@_saving">Verwerfen</button>
+        @if (_error is not null)
+        {
+            <p class="rules-msg error" role="alert">@_error</p>
+        }
+        else if (_success is not null)
+        {
+            <p class="rules-msg success" role="status">@_success</p>
+        }
+    </div>
+</main>
+
+@code {
+    // Unknown is not offered: an unlisted class already is Unknown.
+    private static readonly Verdict[] EditableVerdicts = [Verdict.Ok, Verdict.Nok, Verdict.Danger, Verdict.Ignore];
+
+    private static readonly string[] CommonClasses =
+    [
+        "bottle", "cup", "cell phone", "scissors", "person", "book", "mouse", "keyboard", "remote", "banana",
+        "apple", "spoon", "fork", "knife", "wine glass", "laptop", "toothbrush",
+    ];
+
+    private readonly CancellationTokenSource _cts = new();
+    private List<RuleRow> _rows = [];
+    private IReadOnlyDictionary<string, Verdict> _active = new Dictionary<string, Verdict>();
+    private string _newClass = string.Empty;
+    private Verdict _newVerdict = Verdict.Ok;
+    private bool _saving;
+    private string? _error;
+    private string? _success;
+
+    protected override void OnInitialized()
+    {
+        Load();
+        _active = RuleSetProvider.Current.Rules;
+        _ = PollActiveAsync(_cts.Token);
+    }
+
+    private void Load()
+    {
+        bool readable = RulesFile.TryRead(out IReadOnlyDictionary<string, Verdict> current);
+        _rows = current
+            .OrderBy(r => r.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(r => new RuleRow { ClassName = r.Key, Verdict = r.Value })
+            .ToList();
+        _error = readable ? null : "rules.json konnte nicht gelesen werden – Speichern überschreibt die Datei";
+        _success = null;
+    }
+
+    // The active rule set changes asynchronously (file watcher + reload); poll it to show the hot reload live.
+    private async Task PollActiveAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1), Clock);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                IReadOnlyDictionary<string, Verdict> current = RuleSetProvider.Current.Rules;
+                if (!ReferenceEquals(current, _active))
+                {
+                    await InvokeAsync(() =>
+                    {
+                        _active = current;
+                        StateHasChanged();
+                    });
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Component disposed.
+        }
+        catch (ObjectDisposedException)
+        {
+            // Circuit gone; nothing to update.
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Polling the active rules failed");
+        }
+    }
+
+    private void Add()
+    {
+        _error = null;
+        _success = null;
+        string name = _newClass.Trim().ToLowerInvariant();
+        if (name.Length == 0)
+        {
+            _error = "Bitte einen Klassennamen eingeben.";
+            return;
+        }
+
+        if (_rows.Any(r => string.Equals(r.ClassName, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            _error = $"Für „{name}“ gibt es bereits eine Regel.";
+            return;
+        }
+
+        _rows.Add(new RuleRow { ClassName = name, Verdict = _newVerdict });
+        _newClass = string.Empty;
+    }
+
+    private void Remove(RuleRow row)
+    {
+        _rows.Remove(row);
+        _error = null;
+        _success = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        _success = null;
+
+        var rules = new Dictionary<string, Verdict>(StringComparer.Ordinal);
+        foreach (RuleRow row in _rows)
+        {
+            if (!rules.TryAdd(row.ClassName, row.Verdict))
+            {
+                _error = $"Doppelte Regel für „{row.ClassName}“.";
+                return;
+            }
+        }
+
+        _saving = true;
+        try
+        {
+            await RulesFile.SaveAsync(rules, _cts.Token);
+            _success = "Gespeichert – Regeln werden live übernommen";
+        }
+        catch (ArgumentException ex)
+        {
+            // The service writes German messages; drop the framework's " (Parameter 'x')" suffix.
+            _error = ex.ParamName is null
+                ? ex.Message
+                : ex.Message.Replace($" (Parameter '{ex.ParamName}')", string.Empty, StringComparison.Ordinal);
+        }
+        catch (IOException ex)
+        {
+            _error = $"Speichern fehlgeschlagen: {ex.Message}";
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _error = $"Speichern fehlgeschlagen: {ex.Message}";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private string ActiveLabel(string className) =>
+        _active.TryGetValue(className, out Verdict v) ? VerdictLabels.Get(v) : "–";
+
+    private static IEnumerable<Verdict> OptionsFor(Verdict current) =>
+        EditableVerdicts.Contains(current) ? EditableVerdicts : [.. EditableVerdicts, current];
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+
+    private sealed class RuleRow
+    {
+        public required string ClassName { get; init; }
+
+        public Verdict Verdict { get; set; }
+    }
+}

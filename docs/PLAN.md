@@ -175,3 +175,4 @@ M6: backend(EF+CSV) ║ vision(VideoFileSource) → qa → reviewer
 | 15-nov | Debounce medido en frames de ausencia (N configurable) | Simple y testeable; dependencia de los FPS documentada |
 | 14-nov | Python 3.12 vía `uv` solo para exportar | 3.14 del sistema sin wheels de `ultralytics`/`onnx` fiables |
 | 15-nov | M4b: GPU (CUDA) con yolo11m y fallback automático a yolo11n en CPU (ADR-004); sustituye el no-objetivo «sin GPU» | RTX 5070 Ti: yolo11m 6,4-6,9 ms en CUDA frente a 198 ms en CPU; mejor calidad de detección |
+| 16-nov | M5: sin `InspectionHub` propio; el dashboard usa el circuito SignalR de Blazor Server (suscripción a `EventAdded` + `InvokeAsync(StateHasChanged)`); gráfica en SVG generado en servidor | Un solo transporte, sin cliente JS ni serialización duplicada; menos piezas que explicar y que fallen |

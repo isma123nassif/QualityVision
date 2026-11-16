@@ -1,0 +1,94 @@
+@using System.Globalization
+@using QualityVision.Web.Pipeline
+
+@* Server-rendered stacked bar chart (inline SVG, no JS). Numbers in SVG attributes use the invariant culture. *@
+<div class="chart">
+    <svg viewBox="0 0 @F(Width) @F(Height)" role="img" aria-label="Prüfungen pro Minute" preserveAspectRatio="xMidYMid meet">
+        @* Horizontal grid lines with y labels: 0, half, max *@
+        @foreach (int v in new[] { 0, _yMax / 2, _yMax }.Distinct())
+        {
+            double y = Y(v);
+            @* Inside a code block Razor treats <text> as its own directive; wrapping in <g> keeps it SVG markup. *@
+            <line x1="@F(PadLeft)" x2="@F(Width - PadRight)" y1="@F(y)" y2="@F(y)" class="chart-grid" />
+            <g><text x="@F(PadLeft - 6)" y="@F(y + 5)" text-anchor="end" class="chart-axis">@v</text></g>
+        }
+
+        @for (int i = 0; i < Buckets.Count; i++)
+        {
+            MinuteBucket b = Buckets[i];
+            double x = PadLeft + (i * _slot) + ((_slot - _bar) / 2);
+            double baseY = Y(0);
+            foreach ((int count, string color) in Segments(b))
+            {
+                if (count <= 0)
+                {
+                    continue;
+                }
+
+                double h = count * _unit;
+                baseY -= h;
+                <rect x="@F(x)" y="@F(baseY)" width="@F(_bar)" height="@F(h)" fill="@color">
+                    <title>@b.Minute.ToLocalTime().ToString("HH:mm", De): @count</title>
+                </rect>
+            }
+
+            if ((Buckets.Count - 1 - i) % 3 == 0)
+            {
+                <g><text x="@F(x + (_bar / 2))" y="@F(Height - 6)" text-anchor="middle" class="chart-axis">@b.Minute.ToLocalTime().ToString("HH:mm", De)</text></g>
+            }
+        }
+    </svg>
+
+    <ul class="chart-legend">
+        <li><span class="swatch" style="background:@OkColor"></span>i.O.</li>
+        <li><span class="swatch" style="background:@NokColor"></span>n.i.O.</li>
+        <li><span class="swatch" style="background:@DangerColor"></span>Gefahr</li>
+        <li><span class="swatch" style="background:@UnknownColor"></span>Unbekannt</li>
+    </ul>
+</div>
+
+@code {
+    private const double Width = 640;
+    private const double Height = 220;
+    private const double PadLeft = 36;
+    private const double PadRight = 8;
+    private const double PadTop = 10;
+    private const double PadBottom = 28;
+    private const string OkColor = "#22c55e";
+    private const string NokColor = "#ef4444";
+    private const string DangerColor = "#f97316";
+    private const string UnknownColor = "#9ca3af";
+    private static readonly CultureInfo De = CultureInfo.GetCultureInfo("de-DE");
+
+    private int _yMax = 5;
+    private double _slot;
+    private double _bar;
+    private double _unit;
+
+    /// <summary>Per-minute counts, oldest first (from <c>IInspectionLog.PerMinute</c>).</summary>
+    [Parameter, EditorRequired]
+    public IReadOnlyList<MinuteBucket> Buckets { get; set; } = [];
+
+    /// <inheritdoc />
+    protected override void OnParametersSet()
+    {
+        int max = Buckets.Count == 0 ? 0 : Buckets.Max(b => b.Ok + b.Nok + b.Danger + b.Unknown);
+        _yMax = Math.Max(5, max);
+        if (_yMax % 2 != 0)
+        {
+            _yMax++; // keeps the middle grid label an integer
+        }
+
+        _slot = (Width - PadLeft - PadRight) / Math.Max(1, Buckets.Count);
+        _bar = _slot * 0.7;
+        _unit = (Height - PadTop - PadBottom) / _yMax;
+    }
+
+    private double Y(int value) => Height - PadBottom - (value * _unit);
+
+    // Bottom to top: Ok, Nok, Danger, Unknown.
+    private static (int Count, string Color)[] Segments(MinuteBucket b) =>
+        [(b.Ok, OkColor), (b.Nok, NokColor), (b.Danger, DangerColor), (b.Unknown, UnknownColor)];
+
+    private static string F(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+}
